@@ -104,4 +104,4 @@ Contributions are welcome. If you want to help, open an issue, propose a feature
 
 ## License
 
-No license file is currently included in this repository.
+This project is licensed under the [MIT License](./LICENSE).
