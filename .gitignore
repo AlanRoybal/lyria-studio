@@ -1,0 +1,23 @@
+.DS_Store
+node_modules/
+.claude/
+
+# Build output
+dist/
+dist-electron/
+build/
+release/
+
+# Environment and local config
+.env
+.env.*
+!.env.example
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Test artifacts
+lyria-test.wav

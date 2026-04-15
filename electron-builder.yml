@@ -1,0 +1,66 @@
+appId: com.lyria.studio
+productName: Lyria Studio
+copyright: Copyright © 2026 Lyria Studio
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+
+asar: true
+asarUnpack:
+  - node_modules/ws/**
+  - node_modules/bufferutil/**
+  - node_modules/utf-8-validate/**
+
+npmRebuild: true
+
+directories:
+  buildResources: build
+  output: release
+
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - node_modules/**/*
+
+mac:
+  category: public.app-category.music
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+  icon: build/icon.png
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.png
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+    - target: rpm
+      arch: [x64]
+  category: AudioVideo
+  desktop:
+    Name: Lyria Studio
+    Comment: Music IDE powered by Google Lyria Realtime
+    Categories: AudioVideo;
+  icon: build/icon.png
+
+deb:
+  synopsis: Music IDE powered by Google Lyria Realtime
+
+rpm:
+  synopsis: Music IDE powered by Google Lyria Realtime
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
