@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import sharp from 'sharp'
@@ -24,6 +24,7 @@ const targets = [
 ]
 
 for (const { out, size } of targets) {
+  mkdirSync(dirname(resolve(root, out)), { recursive: true })
   const buf = await sharp(svg, { density: 512 })
     .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .png()
