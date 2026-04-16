@@ -27,6 +27,7 @@ export interface UpdateStartupState {
   postUpdateRelease: UpdateReleaseInfo | null
   currentVersion: string
   isUpdaterSupported: boolean
+  shouldShowTutorial: boolean
   githubStarPrompt: {
     shouldShow: boolean
     repoUrl: string
@@ -52,6 +53,9 @@ declare global {
       installUpdate(): Promise<void>
       markReleaseNotesShown(version: string): Promise<void>
       onEvent(cb: (payload: UpdateState) => void): () => void
+    }
+    tutorial: {
+      markCompleted(): Promise<void>
     }
     engagement: {
       dismissGithubStarPrompt(): Promise<void>

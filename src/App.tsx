@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CircleHelp } from 'lucide-react'
 import { useLyriaSession } from '@/hooks/useLyriaSession'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
@@ -13,8 +13,6 @@ import { TutorialOverlay, type TutorialStep } from '@/components/Tutorial/Tutori
 import { UpdateOverlay } from '@/components/Updates/UpdateOverlay'
 import { GithubStarOverlay } from '@/components/Engagement/GithubStarOverlay'
 import type { AutoUpdatePreference, UpdateReleaseInfo, UpdateState } from '@/types/lyria'
-
-const TUTORIAL_STORAGE_KEY = 'lyria-studio:tutorial-complete'
 
 const TUTORIAL_STEPS: TutorialStep[] = [
   {
@@ -118,6 +116,9 @@ export default function App() {
   const [postUpdateRelease, setPostUpdateRelease] = useState<UpdateReleaseInfo | null>(null)
   const [isUpdaterSupported, setIsUpdaterSupported] = useState(false)
   const [isGithubStarPromptOpen, setIsGithubStarPromptOpen] = useState(false)
+  const [shouldShowTutorial, setShouldShowTutorial] = useState(false)
+  const [startupLoaded, setStartupLoaded] = useState(false)
+  const hasScheduledTutorial = useRef(false)
 
   useKeyboardShortcuts(startLive, stopLive)
 
@@ -131,6 +132,8 @@ export default function App() {
       setPostUpdateRelease(startup.postUpdateRelease)
       setIsUpdaterSupported(startup.isUpdaterSupported)
       setIsGithubStarPromptOpen(startup.githubStarPrompt.shouldShow)
+      setShouldShowTutorial(startup.shouldShowTutorial)
+      setStartupLoaded(true)
     })
 
     const unsubscribe = window.updates.onEvent((nextState) => {
@@ -151,10 +154,9 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (!startupLoaded || !shouldShowTutorial || hasScheduledTutorial.current) return
 
-    const hasCompletedTutorial = window.localStorage.getItem(TUTORIAL_STORAGE_KEY) === 'true'
-    if (hasCompletedTutorial) return
+    hasScheduledTutorial.current = true
 
     const timer = window.setTimeout(() => {
       setCurrentTutorialStep(0)
@@ -162,7 +164,7 @@ export default function App() {
     }, 250)
 
     return () => window.clearTimeout(timer)
-  }, [])
+  }, [shouldShowTutorial, startupLoaded])
 
   const handleOpenTutorial = () => {
     setCurrentTutorialStep(0)
@@ -170,9 +172,10 @@ export default function App() {
   }
 
   const handleCloseTutorial = () => {
-    window.localStorage.setItem(TUTORIAL_STORAGE_KEY, 'true')
+    setShouldShowTutorial(false)
     setIsTutorialOpen(false)
     setCurrentTutorialStep(0)
+    void window.tutorial.markCompleted()
   }
 
   const handleChooseAutoUpdates = (enabled: boolean) => {

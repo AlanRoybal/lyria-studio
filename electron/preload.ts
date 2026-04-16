@@ -50,6 +50,10 @@ contextBridge.exposeInMainWorld('updates', {
   },
 })
 
+contextBridge.exposeInMainWorld('tutorial', {
+  markCompleted: (): Promise<void> => ipcRenderer.invoke('tutorial:markCompleted'),
+})
+
 contextBridge.exposeInMainWorld('engagement', {
   dismissGithubStarPrompt: (): Promise<void> => ipcRenderer.invoke('engagement:dismissGithubStarPrompt'),
   openGithubRepo: (): Promise<void> => ipcRenderer.invoke('engagement:openGithubRepo'),

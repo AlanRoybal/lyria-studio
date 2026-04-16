@@ -16,6 +16,7 @@ interface PersistedReleaseInfo {
 
 interface AppConfig {
   apiKey?: string
+  hasCompletedTutorial?: boolean
   autoUpdatePreference?: AutoUpdatePreference
   pendingPostUpdateRelease?: PersistedReleaseInfo
   lastSeenReleaseNotesVersion?: string
@@ -86,6 +87,21 @@ let currentUpdateState: UpdateState = { status: isUpdaterSupported ? 'idle' : 'u
 let hasStartedUpdateCheck = false
 const GITHUB_REPO_URL = 'https://github.com/AlanRoybal/lyria-studio'
 const GITHUB_STAR_PROMPT_DELAY_MS = 5 * 60 * 1000
+const BUNDLED_RELEASE_NOTES: Record<string, PersistedReleaseInfo> = {
+  '0.1.1': {
+    version: '0.1.1',
+    releaseName: 'v0.1.1',
+    publishedAt: '2026-04-15',
+    releaseNotes: [
+      'Initial public beta release of Lyria Studio.',
+      '',
+      '- Node-based music graph with Prompt, Instrument, Vocals, and Output nodes.',
+      '- Live Lyria Realtime session control with direct timeline capture for instrumentals and vocals.',
+      '- Timeline editing with clip splitting, reversing, multi-track arrangement, and automation for volume and pitch.',
+      '- Local export flow plus built-in onboarding, update prompts, and GitHub release integration.',
+    ].join('\n'),
+  },
+}
 let appOpenStartedAt = 0
 let githubStarPromptTimer: NodeJS.Timeout | null = null
 
@@ -177,15 +193,19 @@ function persistAppOpenTime(): void {
   })
 }
 
-function getPostUpdateReleaseToShow(): PersistedReleaseInfo | null {
+function getReleaseToShowOnStartup(): PersistedReleaseInfo | null {
   const config = readConfig()
   const pending = config.pendingPostUpdateRelease
 
-  if (!pending) return null
-  if (pending.version !== app.getVersion()) return null
-  if (config.lastSeenReleaseNotesVersion === pending.version) return null
+  if (pending && pending.version === app.getVersion() && config.lastSeenReleaseNotesVersion !== pending.version) {
+    return pending
+  }
 
-  return pending
+  const bundled = BUNDLED_RELEASE_NOTES[app.getVersion()]
+  if (!bundled) return null
+  if (config.lastSeenReleaseNotesVersion === bundled.version) return null
+
+  return bundled
 }
 
 function configureAutoUpdater(): void {
@@ -316,14 +336,23 @@ ipcMain.handle('store:setApiKey', (_event, key: string) => {
 })
 
 ipcMain.handle('updates:getStartupState', () => {
+  const config = readConfig()
   return {
-    autoUpdatePreference: readConfig().autoUpdatePreference ?? null,
+    autoUpdatePreference: config.autoUpdatePreference ?? null,
     updateState: currentUpdateState,
-    postUpdateRelease: getPostUpdateReleaseToShow(),
+    postUpdateRelease: getReleaseToShowOnStartup(),
     currentVersion: app.getVersion(),
     isUpdaterSupported,
+    shouldShowTutorial: config.hasCompletedTutorial !== true,
     githubStarPrompt: getGithubStarPromptState(),
   }
+})
+
+ipcMain.handle('tutorial:markCompleted', () => {
+  updateConfig((current) => ({
+    ...current,
+    hasCompletedTutorial: true,
+  }))
 })
 
 ipcMain.handle('engagement:dismissGithubStarPrompt', () => {
