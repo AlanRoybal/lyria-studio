@@ -101,6 +101,7 @@ const BUNDLED_RELEASE_NOTES: Record<string, PersistedReleaseInfo> = {
       '- Playback now stops at the actual end of scheduled clips instead of letting the playhead drift in silence.',
       '- Added real duration-preserving pitch processing for pitch automation in playback and export.',
       '- Pitch automation no longer stretches clips shorter or longer just because the pitch changed.',
+      '- UI sound effects are now bundled with the app instead of relying on files from the local Downloads folder.',
     ].join('\n'),
   },
 }
