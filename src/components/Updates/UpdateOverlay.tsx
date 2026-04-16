@@ -1,15 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import type { AutoUpdatePreference, UpdateReleaseInfo, UpdateState } from '@/types/lyria'
+import type { UpdateReleaseInfo, UpdateState } from '@/types/lyria'
 
 interface UpdateOverlayProps {
-  autoUpdatePreference: AutoUpdatePreference | null
   isUpdaterSupported: boolean
   updateState: UpdateState
   postUpdateRelease: UpdateReleaseInfo | null
-  onChooseAutoUpdates: (enabled: boolean) => void
-  onDownloadUpdate: () => void
-  onInstallUpdate: () => void
+  onOpenReleasePage: () => void
   onDismissReleaseNotes: (version: string) => void
   onDismissError: () => void
 }
@@ -42,13 +39,10 @@ function ReleaseNotes({ release }: { release: UpdateReleaseInfo }) {
 }
 
 export function UpdateOverlay({
-  autoUpdatePreference,
   isUpdaterSupported,
   updateState,
   postUpdateRelease,
-  onChooseAutoUpdates,
-  onDownloadUpdate,
-  onInstallUpdate,
+  onOpenReleasePage,
   onDismissReleaseNotes,
   onDismissError,
 }: UpdateOverlayProps) {
@@ -86,55 +80,23 @@ export function UpdateOverlay({
       </button>
     )
   } else if (updateState.status === 'available' && updateState.release) {
-    const updateBehavior =
-      autoUpdatePreference === 'enabled'
-        ? 'Automatic downloading is enabled, but you can also start this update manually now.'
-        : autoUpdatePreference === 'disabled'
-        ? 'Automatic downloading is off. Install the latest release now, or skip it and be asked again later.'
-        : 'Choose how you want updates handled going forward, or install this release right now.'
     title = `${updateState.release.releaseName ?? `v${updateState.release.version}`} Is Available`
     body = (
       <>
-        <p className="text-sm leading-6 text-zinc-300">{updateBehavior}</p>
+        <p className="text-sm leading-6 text-zinc-300">
+          A newer version is available. Open the latest release page to download and replace the app manually.
+        </p>
         <ReleaseNotes release={updateState.release} />
       </>
     )
     actions = (
-      <>
-        {autoUpdatePreference === null ? (
-          <>
-            <button
-              type="button"
-              onClick={() => onChooseAutoUpdates(false)}
-              className="rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-white/25 hover:bg-white/5"
-            >
-              Ask Me Each Time
-            </button>
-            <button
-              type="button"
-              onClick={() => onChooseAutoUpdates(true)}
-              className="rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-white/25 hover:bg-white/5"
-            >
-              Enable Auto Updates
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            onClick={() => onChooseAutoUpdates(false)}
-            className="rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-white/25 hover:bg-white/5"
-          >
-            Maybe Later
-          </button>
-        )}
         <button
           type="button"
-          onClick={onDownloadUpdate}
+          onClick={onOpenReleasePage}
           className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-zinc-200"
         >
-          Update Now
+          Open Download Page
         </button>
-      </>
     )
   } else if (updateState.status === 'checking') {
     title = 'Checking For Updates'
@@ -155,75 +117,32 @@ export function UpdateOverlay({
         Close
       </button>
     )
-  } else if (autoUpdatePreference === null) {
-    title = 'Enable Auto Updates?'
-    body = (
-      <p className="text-sm leading-6 text-zinc-300">
-        When a new GitHub release is available, Lyria Studio can download it on startup and prompt you to restart
-        into the latest version.
-      </p>
-    )
-    actions = (
-      <>
-        <button
-          type="button"
-          onClick={() => onChooseAutoUpdates(false)}
-          className="rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-white/25 hover:bg-white/5"
-        >
-          No, Ask Me Each Time
-        </button>
-        <button
-          type="button"
-          onClick={() => onChooseAutoUpdates(true)}
-          className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-zinc-200"
-        >
-          Yes, Auto Update
-        </button>
-      </>
-    )
-  } else if (updateState.status === 'downloading') {
-    const percent = Math.max(0, Math.min(100, Math.round(updateState.progressPercent ?? 0)))
-    title = `Downloading ${updateState.release?.releaseName ?? 'Update'}`
-    body = (
-      <>
-        <p className="text-sm leading-6 text-zinc-300">
-          The latest release is downloading now. Restart will be available as soon as the package is ready.
-        </p>
-        <div className="space-y-2">
-          <div className="h-2 overflow-hidden rounded-full bg-white/10">
-            <div className="h-full rounded-full bg-white transition-[width]" style={{ width: `${percent}%` }} />
-          </div>
-          <p className="text-xs uppercase tracking-[0.22em] text-zinc-500">{percent}% complete</p>
-        </div>
-      </>
-    )
-  } else if (updateState.status === 'downloaded' && updateState.release) {
-    title = `${updateState.release.releaseName ?? `v${updateState.release.version}`} Ready To Install`
-    body = (
-      <p className="text-sm leading-6 text-zinc-300">
-        The update is ready. Restart now to install it, then Lyria Studio will reopen on the new version.
-      </p>
-    )
-    actions = (
-      <button
-        type="button"
-        onClick={onInstallUpdate}
-        className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-zinc-200"
-      >
-        Restart And Install
-      </button>
-    )
   } else if (updateState.status === 'error') {
     title = 'Update Check Failed'
-    body = <p className="text-sm leading-6 text-zinc-300">{updateState.message ?? 'Unable to complete the update check.'}</p>
+    body = (
+      <p className="text-sm leading-6 text-zinc-300">
+        {updateState.message ?? 'Unable to complete the update check.'}
+      </p>
+    )
     actions = (
-      <button
-        type="button"
-        onClick={onDismissError}
-        className="rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-white/25 hover:bg-white/5"
-      >
-        Close
-      </button>
+      <>
+        {updateState.requiresManualInstall && (
+          <button
+            type="button"
+            onClick={onOpenReleasePage}
+            className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-zinc-200"
+          >
+            Open Download Page
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onDismissError}
+          className="rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-white/25 hover:bg-white/5"
+        >
+          Close
+        </button>
+      </>
     )
   } else {
     return null

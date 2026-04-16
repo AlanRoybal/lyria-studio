@@ -5,8 +5,6 @@ export interface WeightedPrompt {
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
-export type AutoUpdatePreference = 'enabled' | 'disabled'
-
 export interface UpdateReleaseInfo {
   version: string
   releaseName?: string
@@ -15,15 +13,16 @@ export interface UpdateReleaseInfo {
 }
 
 export interface UpdateState {
-  status: 'idle' | 'unsupported' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'none' | 'error'
+  status: 'idle' | 'unsupported' | 'checking' | 'available' | 'none' | 'error'
   message?: string
   progressPercent?: number
   release?: UpdateReleaseInfo
   wasManualCheck?: boolean
+  requiresManualInstall?: boolean
+  releasePageUrl?: string
 }
 
 export interface UpdateStartupState {
-  autoUpdatePreference: AutoUpdatePreference | null
   updateState: UpdateState
   postUpdateRelease: UpdateReleaseInfo | null
   currentVersion: string
@@ -49,10 +48,8 @@ declare global {
     }
     updates: {
       getStartupState(): Promise<UpdateStartupState>
-      setAutoUpdatePreference(enabled: boolean): Promise<void>
       checkNow(): Promise<void>
-      downloadUpdate(): Promise<void>
-      installUpdate(): Promise<void>
+      openReleasePage(): Promise<void>
       markReleaseNotesShown(version: string): Promise<void>
       onEvent(cb: (payload: UpdateState) => void): () => void
     }

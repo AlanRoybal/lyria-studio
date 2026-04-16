@@ -1,11 +1,9 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from 'electron'
 import path from 'path'
 import fs from 'fs'
-import { autoUpdater, type ProgressInfo, type UpdateDownloadedEvent, type UpdateInfo } from 'electron-updater'
+import { autoUpdater, type UpdateInfo } from 'electron-updater'
 import { LyriaLiveSession } from './lyria-live'
 import { LyriaApiClient } from './lyria-api'
-
-type AutoUpdatePreference = 'enabled' | 'disabled'
 
 interface PersistedReleaseInfo {
   version: string
@@ -17,7 +15,6 @@ interface PersistedReleaseInfo {
 interface AppConfig {
   apiKey?: string
   hasCompletedTutorial?: boolean
-  autoUpdatePreference?: AutoUpdatePreference
   pendingPostUpdateRelease?: PersistedReleaseInfo
   lastSeenReleaseNotesVersion?: string
   githubStarPrompt?: {
@@ -26,7 +23,7 @@ interface AppConfig {
   }
 }
 
-type UpdateStatus = 'idle' | 'unsupported' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'none' | 'error'
+type UpdateStatus = 'idle' | 'unsupported' | 'checking' | 'available' | 'none' | 'error'
 
 interface UpdateState {
   status: UpdateStatus
@@ -34,6 +31,8 @@ interface UpdateState {
   progressPercent?: number
   release?: PersistedReleaseInfo
   wasManualCheck?: boolean
+  requiresManualInstall?: boolean
+  releasePageUrl?: string
 }
 
 function resolveIconPath(): string | null {
@@ -88,20 +87,20 @@ let currentUpdateState: UpdateState = { status: isUpdaterSupported ? 'idle' : 'u
 let hasStartedUpdateCheck = false
 let currentCheckWasManual = false
 const GITHUB_REPO_URL = 'https://github.com/AlanRoybal/lyria-studio'
+const GITHUB_RELEASES_URL = `${GITHUB_REPO_URL}/releases/latest`
 const GITHUB_STAR_PROMPT_DELAY_MS = 5 * 60 * 1000
 const BUNDLED_RELEASE_NOTES: Record<string, PersistedReleaseInfo> = {
-  '0.1.5': {
-    version: '0.1.5',
-    releaseName: 'v0.1.5',
+  '0.1.6': {
+    version: '0.1.6',
+    releaseName: 'v0.1.6',
     publishedAt: '2026-04-16',
     releaseNotes: [
-      'Improves automation editing and keeps pitch changes from altering clip length.',
+      'Simplifies app updates into a startup notification with manual downloads only.',
       '',
-      '- Track and clip automation now render both volume and pitch lines at the same time with clearer color separation.',
-      '- Playback now stops at the actual end of scheduled clips instead of letting the playhead drift in silence.',
-      '- Added real duration-preserving pitch processing for pitch automation in playback and export.',
-      '- Pitch automation no longer stretches clips shorter or longer just because the pitch changed.',
-      '- UI sound effects are now bundled with the app instead of relying on files from the local Downloads folder.',
+      '- Removed in-app auto-update downloads and installs on every platform.',
+      '- The app now checks for newer releases on startup and shows a popup when one is available.',
+      '- Update prompts send users to the GitHub release download page instead of attempting in-place installation.',
+      '- Users can dismiss the update popup and continue using the current version without interruption.',
     ].join('\n'),
   },
 }
@@ -119,7 +118,7 @@ function normalizeReleaseNotes(releaseNotes: UpdateInfo['releaseNotes']): string
   return typeof releaseNotes === 'string' ? releaseNotes.trim() : ''
 }
 
-function toPersistedReleaseInfo(info?: UpdateInfo | UpdateDownloadedEvent | null): PersistedReleaseInfo | undefined {
+function toPersistedReleaseInfo(info?: UpdateInfo | null): PersistedReleaseInfo | undefined {
   if (!info?.version) return undefined
 
   return {
@@ -221,10 +220,13 @@ function configureAutoUpdater(): void {
     setUpdateState({ status: 'checking', wasManualCheck: currentCheckWasManual })
   })
   autoUpdater.on('update-available', (info) => {
+    const requiresManualInstall = true
     setUpdateState({
-      status: autoUpdater.autoDownload ? 'downloading' : 'available',
+      status: 'available',
       release: toPersistedReleaseInfo(info),
       wasManualCheck: currentCheckWasManual,
+      requiresManualInstall,
+      releasePageUrl: GITHUB_RELEASES_URL,
     })
   })
   autoUpdater.on('update-not-available', () => {
@@ -232,28 +234,8 @@ function configureAutoUpdater(): void {
       status: 'none',
       message: currentCheckWasManual ? `Lyria Studio ${app.getVersion()} is up to date.` : undefined,
       wasManualCheck: currentCheckWasManual,
-    })
-  })
-  autoUpdater.on('download-progress', (progress: ProgressInfo) => {
-    setUpdateState({
-      status: 'downloading',
-      progressPercent: progress.percent,
-      release: currentUpdateState.release,
-      wasManualCheck: currentUpdateState.wasManualCheck,
-    })
-  })
-  autoUpdater.on('update-downloaded', (info) => {
-    const release = toPersistedReleaseInfo(info)
-    if (release) {
-      updateConfig((current) => ({
-        ...current,
-        pendingPostUpdateRelease: release,
-      }))
-    }
-    setUpdateState({
-      status: 'downloaded',
-      release,
-      wasManualCheck: currentUpdateState.wasManualCheck,
+      requiresManualInstall: true,
+      releasePageUrl: GITHUB_RELEASES_URL,
     })
   })
   autoUpdater.on('error', (error) => {
@@ -262,6 +244,8 @@ function configureAutoUpdater(): void {
       message: error == null ? 'Unknown update error' : String(error),
       release: currentUpdateState.release,
       wasManualCheck: currentUpdateState.wasManualCheck,
+      requiresManualInstall: currentUpdateState.requiresManualInstall,
+      releasePageUrl: currentUpdateState.releasePageUrl,
     })
   })
 }
@@ -272,9 +256,8 @@ async function checkForAppUpdates(manual: boolean): Promise<void> {
     return
   }
 
-  const preference = readConfig().autoUpdatePreference
   currentCheckWasManual = manual
-  autoUpdater.autoDownload = preference === 'enabled'
+  autoUpdater.autoDownload = false
   await autoUpdater.checkForUpdates()
 }
 
@@ -346,7 +329,6 @@ ipcMain.handle('store:setApiKey', (_event, key: string) => {
 ipcMain.handle('updates:getStartupState', () => {
   const config = readConfig()
   return {
-    autoUpdatePreference: config.autoUpdatePreference ?? null,
     updateState: currentUpdateState,
     postUpdateRelease: getReleaseToShowOnStartup(),
     currentVersion: app.getVersion(),
@@ -381,34 +363,13 @@ ipcMain.handle('engagement:openGithubRepo', async () => {
   await shell.openExternal(GITHUB_REPO_URL)
 })
 
-ipcMain.handle('updates:setAutoUpdatePreference', async (_event, enabled: boolean) => {
-  updateConfig((current) => ({
-    ...current,
-    autoUpdatePreference: enabled ? 'enabled' : 'disabled',
-  }))
-
-  hasStartedUpdateCheck = false
-  await startUpdateCheck(true)
-})
-
 ipcMain.handle('updates:checkNow', async () => {
   hasStartedUpdateCheck = false
   await startUpdateCheck(true)
 })
 
-ipcMain.handle('updates:downloadUpdate', async () => {
-  if (!isUpdaterSupported) return
-  setUpdateState({
-    status: 'downloading',
-    progressPercent: 0,
-    release: currentUpdateState.release,
-  })
-  await autoUpdater.downloadUpdate()
-})
-
-ipcMain.handle('updates:installUpdate', () => {
-  if (!isUpdaterSupported) return
-  autoUpdater.quitAndInstall()
+ipcMain.handle('updates:openReleasePage', async () => {
+  await shell.openExternal(GITHUB_RELEASES_URL)
 })
 
 ipcMain.handle('updates:markReleaseNotesShown', (_event, version: string) => {

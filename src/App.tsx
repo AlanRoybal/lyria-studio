@@ -12,7 +12,7 @@ import { Tooltip } from '@/components/ui/Tooltip'
 import { TutorialOverlay, type TutorialStep } from '@/components/Tutorial/TutorialOverlay'
 import { UpdateOverlay } from '@/components/Updates/UpdateOverlay'
 import { GithubStarOverlay } from '@/components/Engagement/GithubStarOverlay'
-import type { AutoUpdatePreference, UpdateReleaseInfo, UpdateState } from '@/types/lyria'
+import type { UpdateReleaseInfo, UpdateState } from '@/types/lyria'
 
 const TUTORIAL_STEPS: TutorialStep[] = [
   {
@@ -111,7 +111,6 @@ export default function App() {
   const { startLive, stopLive, captureInstrumentals, captureVocals } = useLyriaSession()
   const [isTutorialOpen, setIsTutorialOpen] = useState(false)
   const [currentTutorialStep, setCurrentTutorialStep] = useState(0)
-  const [autoUpdatePreference, setAutoUpdatePreference] = useState<AutoUpdatePreference | null>(null)
   const [updateState, setUpdateState] = useState<UpdateState>({ status: 'idle' })
   const [postUpdateRelease, setPostUpdateRelease] = useState<UpdateReleaseInfo | null>(null)
   const [isUpdaterSupported, setIsUpdaterSupported] = useState(false)
@@ -127,7 +126,6 @@ export default function App() {
 
     window.updates.getStartupState().then((startup) => {
       if (disposed) return
-      setAutoUpdatePreference(startup.autoUpdatePreference)
       setUpdateState(startup.updateState)
       setPostUpdateRelease(startup.postUpdateRelease)
       setIsUpdaterSupported(startup.isUpdaterSupported)
@@ -178,29 +176,14 @@ export default function App() {
     void window.tutorial.markCompleted()
   }
 
-  const handleChooseAutoUpdates = (enabled: boolean) => {
-    const nextPreference: AutoUpdatePreference = enabled ? 'enabled' : 'disabled'
-    setAutoUpdatePreference(nextPreference)
-
-    if (updateState.status === 'error') {
-      setUpdateState({ status: 'idle' })
-    }
-
-    void window.updates.setAutoUpdatePreference(enabled)
-  }
-
-  const handleDownloadUpdate = () => {
-    void window.updates.downloadUpdate()
-  }
-
   const handleCheckForUpdates = () => {
-    if (updateState.status === 'checking' || updateState.status === 'downloading') return
+    if (updateState.status === 'checking') return
     setUpdateState({ status: 'checking', wasManualCheck: true })
     void window.updates.checkNow()
   }
 
-  const handleInstallUpdate = () => {
-    void window.updates.installUpdate()
+  const handleOpenReleasePage = () => {
+    void window.updates.openReleasePage()
   }
 
   const handleDismissReleaseNotes = (version: string) => {
@@ -281,13 +264,10 @@ export default function App() {
         />
       )}
       <UpdateOverlay
-        autoUpdatePreference={autoUpdatePreference}
         isUpdaterSupported={isUpdaterSupported}
         updateState={updateState}
         postUpdateRelease={postUpdateRelease}
-        onChooseAutoUpdates={handleChooseAutoUpdates}
-        onDownloadUpdate={handleDownloadUpdate}
-        onInstallUpdate={handleInstallUpdate}
+        onOpenReleasePage={handleOpenReleasePage}
         onDismissReleaseNotes={handleDismissReleaseNotes}
         onDismissError={handleDismissUpdateError}
       />
