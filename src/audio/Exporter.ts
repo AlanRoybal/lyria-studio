@@ -1,6 +1,6 @@
 import type { Track } from '@/types/timeline'
 import { sampleEnvelope } from './Automation'
-import { getClipPlaybackBuffer } from './ClipPlayback'
+import { getClipPlaybackBuffer, getPitchProcessedPlaybackBuffer } from './ClipPlayback'
 
 const SAMPLE_RATE = 48000
 
@@ -31,13 +31,16 @@ export async function renderMixdown(tracks: Track[]): Promise<AudioBuffer> {
     if (hasSolo && !track.soloed) continue
 
     for (const clip of track.clips) {
-      const playbackBuffer = getClipPlaybackBuffer(clip, ctx)
+      const playbackBuffer =
+        getPitchProcessedPlaybackBuffer(clip, track.pitchAutomation, ctx) ??
+        getClipPlaybackBuffer(clip, ctx)
       if (!playbackBuffer) continue
 
       const source = ctx.createBufferSource()
       source.buffer = playbackBuffer
       const speed = clip.speed ?? 1
-      source.playbackRate.value = speed
+      const usesRenderedPitchBuffer = playbackBuffer.duration <= clip.durationSec + 0.01 && playbackBuffer.duration >= clip.durationSec - 0.01
+      source.playbackRate.value = usesRenderedPitchBuffer ? 1 : speed
 
       const gain = ctx.createGain()
       source.connect(gain)
@@ -45,11 +48,11 @@ export async function renderMixdown(tracks: Track[]): Promise<AudioBuffer> {
 
       const clipStart = clip.startSec
       const clipEnd = clip.startSec + clip.durationSec
-      const bufferOffset = clip.cropStartSec ?? 0
+      const bufferOffset = usesRenderedPitchBuffer ? 0 : (clip.cropStartSec ?? 0)
 
       const gainAt = (timelineSec: number) => {
-        const trackEnv = sampleEnvelope(track.volumeAutomation, timelineSec)
-        const clipEnv = sampleEnvelope(clip.volumeAutomation, timelineSec - clip.startSec)
+        const trackEnv = sampleEnvelope(track.volumeAutomation, timelineSec, 1)
+        const clipEnv = sampleEnvelope(clip.volumeAutomation, timelineSec - clip.startSec, 1)
         return track.volume * trackEnv * clipEnv
       }
 
@@ -69,15 +72,30 @@ export async function renderMixdown(tracks: Track[]): Promise<AudioBuffer> {
         gain.gain.linearRampToValueAtTime(gainAt(t), t)
       }
 
-      const initialPitch = sampleEnvelope(clip.pitchAutomation, 0)
-      source.detune.setValueAtTime(initialPitch * 100, clipStart)
-      for (const p of clip.pitchAutomation ?? []) {
-        const abs = clip.startSec + p.timeSec
-        if (abs < clipStart || abs > clipEnd) continue
-        source.detune.linearRampToValueAtTime(p.value * 100, abs)
+      if (!usesRenderedPitchBuffer) {
+        const pitchAt = (timelineSec: number) => {
+          const trackPitch = sampleEnvelope(track.pitchAutomation, timelineSec, 0)
+          const clipPitch = sampleEnvelope(clip.pitchAutomation, timelineSec - clip.startSec, 0)
+          return trackPitch + clipPitch
+        }
+        const pitchBreakpointTimes = new Set<number>([clipStart, clipEnd])
+        for (const p of track.pitchAutomation ?? []) {
+          if (p.timeSec > clipStart && p.timeSec < clipEnd) pitchBreakpointTimes.add(p.timeSec)
+        }
+        for (const p of clip.pitchAutomation ?? []) {
+          const abs = clip.startSec + p.timeSec
+          if (abs > clipStart && abs < clipEnd) pitchBreakpointTimes.add(abs)
+        }
+        const sortedPitchTimes = [...pitchBreakpointTimes].sort((a, b) => a - b)
+
+        source.detune.setValueAtTime(pitchAt(sortedPitchTimes[0]) * 100, clipStart)
+        for (let i = 1; i < sortedPitchTimes.length; i++) {
+          const t = sortedPitchTimes[i]
+          source.detune.linearRampToValueAtTime(pitchAt(t) * 100, t)
+        }
       }
 
-      source.start(clipStart, bufferOffset, clip.durationSec * speed)
+      source.start(clipStart, bufferOffset, usesRenderedPitchBuffer ? clip.durationSec : clip.durationSec * speed)
     }
   }
 

@@ -1,6 +1,6 @@
 import type { Track } from '@/types/timeline'
 import { sampleEnvelope } from './Automation'
-import { getClipPlaybackBuffer } from './ClipPlayback'
+import { getClipPlaybackBuffer, getPitchProcessedPlaybackBuffer } from './ClipPlayback'
 
 export class AudioEngine {
   private ctx: AudioContext | null = null
@@ -10,6 +10,8 @@ export class AudioEngine {
   private startTimelineSec = 0
   private animFrameId: number | null = null
   private onPlayheadUpdate: ((sec: number) => void) | null = null
+  private onPlaybackEnded: (() => void) | null = null
+  private scheduledEndTimelineSec = 0
 
   getContext(): AudioContext {
     if (!this.ctx || this.ctx.state === 'closed') {
@@ -21,7 +23,8 @@ export class AudioEngine {
   play(
     tracks: Track[],
     fromSec: number,
-    onPlayheadUpdate: (sec: number) => void
+    onPlayheadUpdate: (sec: number) => void,
+    onPlaybackEnded?: () => void
   ): void {
     this.stop()
 
@@ -31,6 +34,8 @@ export class AudioEngine {
     this.startContextTime = ctx.currentTime
     this.startTimelineSec = fromSec
     this.onPlayheadUpdate = onPlayheadUpdate
+    this.onPlaybackEnded = onPlaybackEnded ?? null
+    this.scheduledEndTimelineSec = fromSec
 
     const hasSolo = tracks.some((t) => t.soloed)
 
@@ -39,15 +44,19 @@ export class AudioEngine {
       if (hasSolo && !track.soloed) continue
 
       for (const clip of track.clips) {
-        const playbackBuffer = getClipPlaybackBuffer(clip, ctx)
+        const playbackBuffer =
+          getPitchProcessedPlaybackBuffer(clip, track.pitchAutomation, ctx) ??
+          getClipPlaybackBuffer(clip, ctx)
         if (!playbackBuffer) continue
         // Skip clips that end before the playhead
         if (clip.startSec + clip.durationSec <= fromSec) continue
+        this.scheduledEndTimelineSec = Math.max(this.scheduledEndTimelineSec, clip.startSec + clip.durationSec)
 
         const source = ctx.createBufferSource()
         source.buffer = playbackBuffer
         const speed = clip.speed ?? 1
-        source.playbackRate.value = speed
+        const usesRenderedPitchBuffer = playbackBuffer.duration <= clip.durationSec + 0.01 && playbackBuffer.duration >= clip.durationSec - 0.01
+        source.playbackRate.value = usesRenderedPitchBuffer ? 1 : speed
 
         const gain = ctx.createGain()
         source.connect(gain)
@@ -58,17 +67,21 @@ export class AudioEngine {
         // How far into the clip to start (if playhead is mid-clip)
         const clipOffset = Math.max(0, fromSec - clip.startSec)
         // Combine clip-level crop offset with any mid-clip seek offset
-        const bufferOffset = (clip.cropStartSec ?? 0) + clipOffset * speed
+        const bufferOffset = usesRenderedPitchBuffer
+          ? clipOffset
+          : (clip.cropStartSec ?? 0) + clipOffset * speed
         // Duration passed to start() is in source-buffer seconds.
-        const remaining = (clip.durationSec - clipOffset) * speed
+        const remaining = usesRenderedPitchBuffer
+          ? clip.durationSec - clipOffset
+          : (clip.durationSec - clipOffset) * speed
 
         // ── Volume envelope scheduling ──────────────────────────────────────
         const clipAudibleStart = Math.max(fromSec, clip.startSec)
         const clipAudibleEnd = clip.startSec + clip.durationSec
 
         const gainAt = (timelineSec: number) => {
-          const trackEnv = sampleEnvelope(track.volumeAutomation, timelineSec)
-          const clipEnv = sampleEnvelope(clip.volumeAutomation, timelineSec - clip.startSec)
+          const trackEnv = sampleEnvelope(track.volumeAutomation, timelineSec, 1)
+          const clipEnv = sampleEnvelope(clip.volumeAutomation, timelineSec - clip.startSec, 1)
           return track.volume * trackEnv * clipEnv
         }
 
@@ -94,16 +107,32 @@ export class AudioEngine {
           gain.gain.linearRampToValueAtTime(gainAt(t), ctxTime)
         }
 
-        const initialPitch = sampleEnvelope(
-          clip.pitchAutomation,
-          clipAudibleStart - clip.startSec
-        )
-        source.detune.setValueAtTime(initialPitch * 100, contextStartTime)
-        for (const p of clip.pitchAutomation ?? []) {
-          const abs = clip.startSec + p.timeSec
-          if (abs < clipAudibleStart || abs > clipAudibleEnd) continue
-          const ctxTime = contextStartTime + (abs - clipAudibleStart)
-          source.detune.linearRampToValueAtTime(p.value * 100, ctxTime)
+        if (!usesRenderedPitchBuffer) {
+          const pitchAt = (timelineSec: number) => {
+            const trackPitch = sampleEnvelope(track.pitchAutomation, timelineSec, 0)
+            const clipPitch = sampleEnvelope(clip.pitchAutomation, timelineSec - clip.startSec, 0)
+            return trackPitch + clipPitch
+          }
+          const pitchBreakpointTimes = new Set<number>([clipAudibleStart, clipAudibleEnd])
+          for (const p of track.pitchAutomation ?? []) {
+            if (p.timeSec > clipAudibleStart && p.timeSec < clipAudibleEnd) {
+              pitchBreakpointTimes.add(p.timeSec)
+            }
+          }
+          for (const p of clip.pitchAutomation ?? []) {
+            const abs = clip.startSec + p.timeSec
+            if (abs > clipAudibleStart && abs < clipAudibleEnd) {
+              pitchBreakpointTimes.add(abs)
+            }
+          }
+          const sortedPitchTimes = Array.from(pitchBreakpointTimes).sort((a, b) => a - b)
+
+          source.detune.setValueAtTime(pitchAt(sortedPitchTimes[0]) * 100, contextStartTime)
+          for (let i = 1; i < sortedPitchTimes.length; i++) {
+            const t = sortedPitchTimes[i]
+            const ctxTime = contextStartTime + (t - clipAudibleStart)
+            source.detune.linearRampToValueAtTime(pitchAt(t) * 100, ctxTime)
+          }
         }
 
         source.start(contextStartTime, bufferOffset, remaining)
@@ -116,7 +145,16 @@ export class AudioEngine {
     // RAF loop for playhead position updates
     const tick = () => {
       const elapsed = ctx.currentTime - this.startContextTime
-      this.onPlayheadUpdate?.(this.startTimelineSec + elapsed)
+      const nextTimelineSec = this.startTimelineSec + elapsed
+      if (nextTimelineSec >= this.scheduledEndTimelineSec) {
+        this.onPlayheadUpdate?.(this.scheduledEndTimelineSec)
+        const ended = this.onPlaybackEnded
+        this.pause()
+        ended?.()
+        return
+      }
+
+      this.onPlayheadUpdate?.(nextTimelineSec)
       this.animFrameId = requestAnimationFrame(tick)
     }
     this.animFrameId = requestAnimationFrame(tick)
@@ -132,6 +170,7 @@ export class AudioEngine {
     }
     this.scheduledSources = []
     this.scheduledGains = []
+    this.onPlaybackEnded = null
     this.ctx?.suspend()
   }
 

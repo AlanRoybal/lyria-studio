@@ -90,17 +90,17 @@ let currentCheckWasManual = false
 const GITHUB_REPO_URL = 'https://github.com/AlanRoybal/lyria-studio'
 const GITHUB_STAR_PROMPT_DELAY_MS = 5 * 60 * 1000
 const BUNDLED_RELEASE_NOTES: Record<string, PersistedReleaseInfo> = {
-  '0.1.3': {
-    version: '0.1.3',
-    releaseName: 'v0.1.3',
+  '0.1.4': {
+    version: '0.1.4',
+    releaseName: 'v0.1.4',
     publishedAt: '2026-04-16',
     releaseNotes: [
-      'Improves update detection and update controls in packaged builds.',
+      'Improves automation editing and keeps pitch changes from altering clip length.',
       '',
-      '- The app now checks for updates on startup even when automatic downloading is turned off.',
-      '- Choosing "Ask Me Each Time" now still surfaces available releases instead of silently skipping them.',
-      '- Added a manual Updates button in the toolbar for on-demand update checks.',
-      '- Manual update checks now show a clear up-to-date result when no newer release is available.',
+      '- Track and clip automation now render both volume and pitch lines at the same time with clearer color separation.',
+      '- Playback now stops at the actual end of scheduled clips instead of letting the playhead drift in silence.',
+      '- Added real duration-preserving pitch processing for pitch automation in playback and export.',
+      '- Pitch automation no longer stretches clips shorter or longer just because the pitch changed.',
     ].join('\n'),
   },
 }

@@ -6,9 +6,10 @@ export function sortPoints(points: AutomationPoint[]): AutomationPoint[] {
 
 export function sampleEnvelope(
   points: AutomationPoint[] | undefined,
-  timeSec: number
+  timeSec: number,
+  defaultValue = 1
 ): number {
-  if (!points || points.length === 0) return 1
+  if (!points || points.length === 0) return defaultValue
   const sorted = sortPoints(points)
   if (timeSec <= sorted[0].timeSec) return sorted[0].value
   const last = sorted[sorted.length - 1]

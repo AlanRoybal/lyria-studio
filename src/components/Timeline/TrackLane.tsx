@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import type { Track } from '@/types/timeline'
 import { useTimelineStore } from '@/store/timelineStore'
 import { useSessionStore } from '@/store/sessionStore'
@@ -19,12 +19,16 @@ export function TrackLane({ track, totalWidthPx, trackIndex, allTrackIds }: Trac
   const durationSec = useTimelineStore((s) => s.durationSec)
   const automationMode = useTimelineStore((s) => s.automationMode)
   const setTrackAutomation = useTimelineStore((s) => s.setTrackAutomation)
+  const setTrackPitchAutomation = useTimelineStore((s) => s.setTrackPitchAutomation)
   const activeTrackId = useTimelineStore((s) => s.activeTrackId)
   const setActiveTrack = useTimelineStore((s) => s.setActiveTrack)
   const setSelectedClip = useTimelineStore((s) => s.setSelectedClip)
   const setPlayhead = useTimelineStore((s) => s.setPlayhead)
   const isCapturing = useSessionStore((s) => s.isCapturing)
   const captureStartSec = useSessionStore((s) => s.captureStartSec)
+  const [automationLane, setAutomationLane] = useState<'volume' | 'pitch'>('volume')
+  const trackVolumeColor = '#34d399'
+  const trackPitchColor = '#f472b6'
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -62,17 +66,88 @@ export function TrackLane({ track, totalWidthPx, trackIndex, allTrackIds }: Trac
       >
         <EnvelopeEditor
           points={track.volumeAutomation}
-          onChange={(pts) => setTrackAutomation(track.id, pts)}
+          onChange={() => {}}
           width={totalWidthPx}
           height={80}
-          color={track.color}
-          interactive={automationMode}
+          color={trackVolumeColor}
+          interactive={false}
           timeToX={(t) => (t - scrollOffsetSec) * zoomLevel}
           xToTime={(x) => scrollOffsetSec + x / zoomLevel}
           timeMin={0}
           timeMax={durationSec}
         />
+        <EnvelopeEditor
+          points={track.pitchAutomation}
+          onChange={() => {}}
+          width={totalWidthPx}
+          height={80}
+          color={trackPitchColor}
+          interactive={false}
+          timeToX={(t) => (t - scrollOffsetSec) * zoomLevel}
+          xToTime={(x) => scrollOffsetSec + x / zoomLevel}
+          timeMin={0}
+          timeMax={durationSec}
+          valueMin={-12}
+          valueMax={12}
+        />
       </div>
+
+      <div
+        className="absolute left-0 top-0 h-full"
+        style={{ width: totalWidthPx, pointerEvents: automationMode ? 'auto' : 'none' }}
+      >
+        <EnvelopeEditor
+          points={automationLane === 'pitch' ? track.pitchAutomation : track.volumeAutomation}
+          onChange={(pts) =>
+            automationLane === 'pitch'
+              ? setTrackPitchAutomation(track.id, pts)
+              : setTrackAutomation(track.id, pts)
+          }
+          width={totalWidthPx}
+          height={80}
+          color={automationLane === 'pitch' ? trackPitchColor : trackVolumeColor}
+          interactive={automationMode}
+          timeToX={(t) => (t - scrollOffsetSec) * zoomLevel}
+          xToTime={(x) => scrollOffsetSec + x / zoomLevel}
+          timeMin={0}
+          timeMax={durationSec}
+          valueMin={automationLane === 'pitch' ? -12 : 0}
+          valueMax={automationLane === 'pitch' ? 12 : 1}
+        />
+      </div>
+
+      {automationMode && (
+        <div className="absolute bottom-1 left-1 z-10 flex gap-1">
+          <button
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              setAutomationLane('volume')
+            }}
+            className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${
+              automationLane === 'volume'
+                ? 'bg-emerald-300 text-black'
+                : 'bg-black/40 text-zinc-300 hover:bg-black/60'
+            }`}
+          >
+            Vol
+          </button>
+          <button
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              setAutomationLane('pitch')
+            }}
+            className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${
+              automationLane === 'pitch'
+                ? 'bg-pink-300 text-black'
+                : 'bg-black/40 text-zinc-300 hover:bg-black/60'
+            }`}
+          >
+            Pitch
+          </button>
+        </div>
+      )}
 
       {track.clips.map((clip) => (
         <Clip

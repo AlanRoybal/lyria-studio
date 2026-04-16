@@ -28,6 +28,7 @@ export interface Track {
   volume: number
   clips: Clip[]
   volumeAutomation?: AutomationPoint[]
+  pitchAutomation?: AutomationPoint[]
 }
 
 export const TRACK_COLORS = [

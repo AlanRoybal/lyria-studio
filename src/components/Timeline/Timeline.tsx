@@ -93,6 +93,8 @@ export function Timeline() {
             useTimelineStore.getState()
           audioEngine.play(currentTracks, resumeSec, (sec) => {
             useTimelineStore.getState().setPlayhead(sec)
+          }, () => {
+            useTimelineStore.getState().setIsPlaying(false)
           })
         }
       }

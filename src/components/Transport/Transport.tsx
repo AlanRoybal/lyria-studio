@@ -78,6 +78,8 @@ export function Transport({
     } else {
       audioEngine.play(tracks, playheadSec, (sec) => {
         useTimelineStore.getState().setPlayhead(sec)
+      }, () => {
+        useTimelineStore.getState().setIsPlaying(false)
       })
       setIsPlaying(true)
     }
@@ -97,6 +99,8 @@ export function Transport({
       setTimeout(() => {
         audioEngine.play(tracks, 0, (sec) => {
           useTimelineStore.getState().setPlayhead(sec)
+        }, () => {
+          useTimelineStore.getState().setIsPlaying(false)
         })
         setIsPlaying(true)
       }, 50)
@@ -167,7 +171,7 @@ export function Transport({
           </button>
         </Tooltip>
 
-        <Tooltip text={automationMode ? 'Exit automation mode' : 'Edit volume and clip pitch automation (click to add points, right-click to remove)'}>
+        <Tooltip text={automationMode ? 'Exit automation mode' : 'Edit track and clip volume and pitch automation (click to add points, right-click to remove)'}>
           <button
             onClick={() => setAutomationMode(!automationMode)}
             className={`flex h-8 items-center gap-1 rounded px-2 text-xs font-semibold transition-colors ${

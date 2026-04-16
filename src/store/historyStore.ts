@@ -72,6 +72,7 @@ function cloneTimelineSnapshot(snapshot: TimelineHistorySnapshot): TimelineHisto
       ...track,
       clips: track.clips.map(cloneClip),
       volumeAutomation: cloneAutomationPoints(track.volumeAutomation),
+      pitchAutomation: cloneAutomationPoints(track.pitchAutomation),
     })),
   }
 }

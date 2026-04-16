@@ -46,6 +46,8 @@ export function useKeyboardShortcuts(
           } else {
             audioEngine.play(tracks, playheadSec, (sec) => {
               useTimelineStore.getState().setPlayhead(sec)
+            }, () => {
+              useTimelineStore.getState().setIsPlaying(false)
             })
             setIsPlaying(true)
           }

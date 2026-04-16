@@ -37,6 +37,8 @@ export function Clip({ clip, zoomLevel, scrollOffsetSec, trackIndex, allTrackIds
   const [isSpeedOpen, setIsSpeedOpen] = useState(false)
   const [speedPanelPosition, setSpeedPanelPosition] = useState<{ top: number; left: number } | null>(null)
   const playbackSpeed = clip.speed ?? 1
+  const clipVolumeColor = '#f59e0b'
+  const clipPitchColor = '#38bdf8'
 
   const leftPx = (clip.startSec - scrollOffsetSec) * zoomLevel
   const widthPx = Math.max(8, clip.durationSec * zoomLevel)
@@ -230,6 +232,7 @@ export function Clip({ clip, zoomLevel, scrollOffsetSec, trackIndex, allTrackIds
         backgroundColor: clip.color + '33',
         border: `1px solid ${isSelected ? clip.color : `${clip.color}66`}`,
         boxShadow: isSelected ? `0 0 0 1px ${clip.color}55 inset, 0 0 0 1px ${clip.color}55` : undefined,
+        boxSizing: 'border-box',
       }}
       onMouseDown={handleMouseDown}
       onContextMenu={handleContextMenu}
@@ -326,7 +329,7 @@ export function Clip({ clip, zoomLevel, scrollOffsetSec, trackIndex, allTrackIds
             }}
             className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${
               automationLane === 'volume'
-                ? 'bg-amber-300 text-black'
+                ? 'bg-amber-400 text-black'
                 : 'bg-black/40 text-zinc-300 hover:bg-black/60'
             }`}
           >
@@ -350,6 +353,32 @@ export function Clip({ clip, zoomLevel, scrollOffsetSec, trackIndex, allTrackIds
       )}
 
       <EnvelopeEditor
+        points={clip.volumeAutomation}
+        onChange={() => {}}
+        width={widthPx}
+        height={Math.max(8, TRACK_HEIGHT_PX - 16)}
+        color={clipVolumeColor}
+        interactive={false}
+        timeToX={(t) => t * zoomLevel}
+        xToTime={(x) => x / zoomLevel}
+        timeMin={0}
+        timeMax={clip.durationSec}
+      />
+      <EnvelopeEditor
+        points={clip.pitchAutomation}
+        onChange={() => {}}
+        width={widthPx}
+        height={Math.max(8, TRACK_HEIGHT_PX - 16)}
+        color={clipPitchColor}
+        interactive={false}
+        timeToX={(t) => t * zoomLevel}
+        xToTime={(x) => x / zoomLevel}
+        timeMin={0}
+        timeMax={clip.durationSec}
+        valueMin={-12}
+        valueMax={12}
+      />
+      <EnvelopeEditor
         points={automationLane === 'pitch' ? clip.pitchAutomation : clip.volumeAutomation}
         onChange={(pts) =>
           automationLane === 'pitch'
@@ -358,7 +387,7 @@ export function Clip({ clip, zoomLevel, scrollOffsetSec, trackIndex, allTrackIds
         }
         width={widthPx}
         height={Math.max(8, TRACK_HEIGHT_PX - 16)}
-        color={automationLane === 'pitch' ? '#7dd3fc' : '#fef3c7'}
+        color={automationLane === 'pitch' ? clipPitchColor : clipVolumeColor}
         interactive={automationMode}
         timeToX={(t) => t * zoomLevel}
         xToTime={(x) => x / zoomLevel}

@@ -48,6 +48,7 @@ interface TimelineState {
   setClipAutomation(clipId: string, points: AutomationPoint[]): void
   setClipPitchAutomation(clipId: string, points: AutomationPoint[]): void
   setTrackAutomation(trackId: string, points: AutomationPoint[]): void
+  setTrackPitchAutomation(trackId: string, points: AutomationPoint[]): void
 }
 
 let pendingPlaybackRefresh = false
@@ -123,6 +124,8 @@ function schedulePlaybackRefresh() {
 
     audioEngine.play(state.tracks, playheadSec, (sec) => {
       useTimelineStore.getState().setPlayhead(sec)
+    }, () => {
+      useTimelineStore.getState().setIsPlaying(false)
     })
   })
 }
@@ -424,6 +427,16 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
     set((s) => ({
       tracks: s.tracks.map((t) =>
         t.id === trackId ? { ...t, volumeAutomation: points } : t
+      ),
+    }))
+    schedulePlaybackRefresh()
+  },
+
+  setTrackPitchAutomation(trackId, points) {
+    useHistoryStore.getState().record(`timeline:track-pitch:${trackId}`)
+    set((s) => ({
+      tracks: s.tracks.map((t) =>
+        t.id === trackId ? { ...t, pitchAutomation: points } : t
       ),
     }))
     schedulePlaybackRefresh()
