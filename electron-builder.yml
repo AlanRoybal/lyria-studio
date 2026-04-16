@@ -1,7 +1,13 @@
 appId: com.lyria.studio
 productName: Lyria Studio
 copyright: Copyright © 2026 Lyria Studio
-artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+artifactName: ${name}-${os}-${arch}.${ext}
+
+publish:
+  provider: github
+  owner: AlanRoybal
+  repo: lyria-studio
+  releaseType: release
 
 asar: true
 asarUnpack:
@@ -48,6 +54,7 @@ linux:
     - target: rpm
       arch: [x64]
   category: AudioVideo
+  maintainer: Lyria Studio
   desktop:
     Name: Lyria Studio
     Comment: Music IDE powered by Google Lyria Realtime

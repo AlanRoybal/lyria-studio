@@ -1,6 +1,6 @@
 {
   "name": "lyria-studio",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Music IDE powered by Google Lyria Realtime",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -16,6 +16,7 @@
   "dependencies": {
     "@google/genai": "^1.49.0",
     "@xyflow/react": "^12.3.6",
+    "electron-updater": "^6.8.3",
     "lucide-react": "^1.8.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

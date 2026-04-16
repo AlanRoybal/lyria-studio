@@ -35,6 +35,31 @@ contextBridge.exposeInMainWorld('store', {
     ipcRenderer.invoke('export:saveFile', { suggestedName, data, filters }),
 })
 
+contextBridge.exposeInMainWorld('updates', {
+  getStartupState: () => ipcRenderer.invoke('updates:getStartupState'),
+  setAutoUpdatePreference: (enabled: boolean) =>
+    ipcRenderer.invoke('updates:setAutoUpdatePreference', enabled),
+  downloadUpdate: () => ipcRenderer.invoke('updates:downloadUpdate'),
+  installUpdate: () => ipcRenderer.invoke('updates:installUpdate'),
+  markReleaseNotesShown: (version: string) =>
+    ipcRenderer.invoke('updates:markReleaseNotesShown', version),
+  onEvent: (callback: (payload: unknown) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
+    ipcRenderer.on('updates:event', handler)
+    return () => ipcRenderer.removeListener('updates:event', handler)
+  },
+})
+
+contextBridge.exposeInMainWorld('engagement', {
+  dismissGithubStarPrompt: (): Promise<void> => ipcRenderer.invoke('engagement:dismissGithubStarPrompt'),
+  openGithubRepo: (): Promise<void> => ipcRenderer.invoke('engagement:openGithubRepo'),
+  onGithubStarPrompt: (callback: (payload: { repoUrl: string }) => void): (() => void) => {
+    const handler = (_: Electron.IpcRendererEvent, payload: { repoUrl: string }) => callback(payload)
+    ipcRenderer.on('engagement:github-star-prompt', handler)
+    return () => ipcRenderer.removeListener('engagement:github-star-prompt', handler)
+  },
+})
+
 contextBridge.exposeInMainWorld('lyria', {
   startLive: (
     apiKey: string,

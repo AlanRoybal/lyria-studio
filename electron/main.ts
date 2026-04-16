@@ -1,8 +1,38 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from 'electron'
 import path from 'path'
 import fs from 'fs'
+import { autoUpdater, type ProgressInfo, type UpdateDownloadedEvent, type UpdateInfo } from 'electron-updater'
 import { LyriaLiveSession } from './lyria-live'
 import { LyriaApiClient } from './lyria-api'
+
+type AutoUpdatePreference = 'enabled' | 'disabled'
+
+interface PersistedReleaseInfo {
+  version: string
+  releaseName?: string
+  releaseNotes: string
+  publishedAt?: string
+}
+
+interface AppConfig {
+  apiKey?: string
+  autoUpdatePreference?: AutoUpdatePreference
+  pendingPostUpdateRelease?: PersistedReleaseInfo
+  lastSeenReleaseNotesVersion?: string
+  githubStarPrompt?: {
+    accumulatedOpenMs?: number
+    dismissed?: boolean
+  }
+}
+
+type UpdateStatus = 'idle' | 'unsupported' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'none' | 'error'
+
+interface UpdateState {
+  status: UpdateStatus
+  message?: string
+  progressPercent?: number
+  release?: PersistedReleaseInfo
+}
 
 function resolveIconPath(): string | null {
   const candidates = [
@@ -31,7 +61,7 @@ function getConfigPath(): string {
   return path.join(app.getPath('userData'), 'config.json')
 }
 
-function readConfig(): Record<string, string> {
+function readConfig(): AppConfig {
   try {
     const raw = fs.readFileSync(getConfigPath(), 'utf-8')
     return JSON.parse(raw)
@@ -40,11 +70,202 @@ function readConfig(): Record<string, string> {
   }
 }
 
-function writeConfig(data: Record<string, string>): void {
+function writeConfig(data: AppConfig): void {
   fs.writeFileSync(getConfigPath(), JSON.stringify(data), 'utf-8')
 }
 
+function updateConfig(mutator: (current: AppConfig) => AppConfig): AppConfig {
+  const next = mutator(readConfig())
+  writeConfig(next)
+  return next
+}
+
 const isDev = process.env.NODE_ENV === 'development' || !!process.env.VITE_DEV_SERVER_URL
+const isUpdaterSupported = app.isPackaged && !isDev
+let currentUpdateState: UpdateState = { status: isUpdaterSupported ? 'idle' : 'unsupported' }
+let hasStartedUpdateCheck = false
+const GITHUB_REPO_URL = 'https://github.com/AlanRoybal/lyria-studio'
+const GITHUB_STAR_PROMPT_DELAY_MS = 5 * 60 * 1000
+let appOpenStartedAt = 0
+let githubStarPromptTimer: NodeJS.Timeout | null = null
+
+function normalizeReleaseNotes(releaseNotes: UpdateInfo['releaseNotes']): string {
+  if (Array.isArray(releaseNotes)) {
+    return releaseNotes
+      .map((entry) => (entry.note ?? '').trim())
+      .filter(Boolean)
+      .join('\n\n')
+  }
+
+  return typeof releaseNotes === 'string' ? releaseNotes.trim() : ''
+}
+
+function toPersistedReleaseInfo(info?: UpdateInfo | UpdateDownloadedEvent | null): PersistedReleaseInfo | undefined {
+  if (!info?.version) return undefined
+
+  return {
+    version: info.version,
+    releaseName: 'releaseName' in info && typeof info.releaseName === 'string' ? info.releaseName : undefined,
+    releaseNotes: normalizeReleaseNotes(info.releaseNotes),
+    publishedAt:
+      'releaseDate' in info && typeof info.releaseDate === 'string' ? info.releaseDate : undefined,
+  }
+}
+
+function setUpdateState(next: UpdateState): void {
+  currentUpdateState = next
+  mainWindow?.webContents.send('updates:event', next)
+}
+
+function getGithubStarPromptState(): { shouldShow: boolean; repoUrl: string } {
+  const prompt = readConfig().githubStarPrompt
+  const sessionOpenMs = appOpenStartedAt ? Math.max(0, Date.now() - appOpenStartedAt) : 0
+  const accumulatedOpenMs = (prompt?.accumulatedOpenMs ?? 0) + sessionOpenMs
+  const dismissed = prompt?.dismissed === true
+
+  return {
+    shouldShow: !dismissed && accumulatedOpenMs >= GITHUB_STAR_PROMPT_DELAY_MS,
+    repoUrl: GITHUB_REPO_URL,
+  }
+}
+
+function clearGithubStarPromptTimer(): void {
+  if (!githubStarPromptTimer) return
+  clearTimeout(githubStarPromptTimer)
+  githubStarPromptTimer = null
+}
+
+function scheduleGithubStarPrompt(): void {
+  clearGithubStarPromptTimer()
+
+  const prompt = readConfig().githubStarPrompt
+  if (prompt?.dismissed) return
+
+  const sessionOpenMs = appOpenStartedAt ? Math.max(0, Date.now() - appOpenStartedAt) : 0
+  const accumulatedOpenMs = (prompt?.accumulatedOpenMs ?? 0) + sessionOpenMs
+  const remainingMs = GITHUB_STAR_PROMPT_DELAY_MS - accumulatedOpenMs
+
+  if (remainingMs <= 0) {
+    mainWindow?.webContents.send('engagement:github-star-prompt', { repoUrl: GITHUB_REPO_URL })
+    return
+  }
+
+  githubStarPromptTimer = setTimeout(() => {
+    githubStarPromptTimer = null
+    mainWindow?.webContents.send('engagement:github-star-prompt', { repoUrl: GITHUB_REPO_URL })
+  }, remainingMs)
+}
+
+function persistAppOpenTime(): void {
+  if (!appOpenStartedAt) return
+
+  const now = Date.now()
+  const elapsedMs = Math.max(0, now - appOpenStartedAt)
+  appOpenStartedAt = now
+
+  if (elapsedMs === 0) return
+
+  updateConfig((current) => {
+    const prompt = current.githubStarPrompt ?? {}
+    return {
+      ...current,
+      githubStarPrompt: {
+        ...prompt,
+        accumulatedOpenMs: (prompt.accumulatedOpenMs ?? 0) + elapsedMs,
+      },
+    }
+  })
+}
+
+function getPostUpdateReleaseToShow(): PersistedReleaseInfo | null {
+  const config = readConfig()
+  const pending = config.pendingPostUpdateRelease
+
+  if (!pending) return null
+  if (pending.version !== app.getVersion()) return null
+  if (config.lastSeenReleaseNotesVersion === pending.version) return null
+
+  return pending
+}
+
+function configureAutoUpdater(): void {
+  if (!isUpdaterSupported) return
+
+  autoUpdater.autoInstallOnAppQuit = false
+  autoUpdater.disableWebInstaller = true
+  autoUpdater.forceDevUpdateConfig = false
+  autoUpdater.on('checking-for-update', () => {
+    setUpdateState({ status: 'checking' })
+  })
+  autoUpdater.on('update-available', (info) => {
+    setUpdateState({
+      status: autoUpdater.autoDownload ? 'downloading' : 'available',
+      release: toPersistedReleaseInfo(info),
+    })
+  })
+  autoUpdater.on('update-not-available', () => {
+    setUpdateState({ status: 'none' })
+  })
+  autoUpdater.on('download-progress', (progress: ProgressInfo) => {
+    setUpdateState({
+      status: 'downloading',
+      progressPercent: progress.percent,
+      release: currentUpdateState.release,
+    })
+  })
+  autoUpdater.on('update-downloaded', (info) => {
+    const release = toPersistedReleaseInfo(info)
+    if (release) {
+      updateConfig((current) => ({
+        ...current,
+        pendingPostUpdateRelease: release,
+      }))
+    }
+    setUpdateState({
+      status: 'downloaded',
+      release,
+    })
+  })
+  autoUpdater.on('error', (error) => {
+    setUpdateState({
+      status: 'error',
+      message: error == null ? 'Unknown update error' : String(error),
+      release: currentUpdateState.release,
+    })
+  })
+}
+
+async function checkForAppUpdates(): Promise<void> {
+  if (!isUpdaterSupported) {
+    setUpdateState({ status: 'unsupported' })
+    return
+  }
+
+  const preference = readConfig().autoUpdatePreference
+  if (!preference) return
+
+  autoUpdater.autoDownload = preference === 'enabled'
+  await autoUpdater.checkForUpdates()
+}
+
+async function startUpdateCheckIfConfigured(): Promise<void> {
+  if (hasStartedUpdateCheck) return
+
+  const preference = readConfig().autoUpdatePreference
+  if (!preference) return
+
+  hasStartedUpdateCheck = true
+
+  try {
+    await checkForAppUpdates()
+  } catch (error) {
+    hasStartedUpdateCheck = false
+    setUpdateState({
+      status: 'error',
+      message: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
 
 function createWindow() {
   const iconPath = resolveIconPath()
@@ -77,6 +298,11 @@ function createWindow() {
     shell.openExternal(url)
     return { action: 'deny' }
   })
+
+  mainWindow.webContents.once('did-finish-load', () => {
+    void startUpdateCheckIfConfigured()
+    scheduleGithubStarPrompt()
+  })
 }
 
 // ── IPC: API key persistence ──────────────────────────────────────────────────
@@ -87,6 +313,69 @@ ipcMain.handle('store:getApiKey', () => {
 
 ipcMain.handle('store:setApiKey', (_event, key: string) => {
   writeConfig({ ...readConfig(), apiKey: key })
+})
+
+ipcMain.handle('updates:getStartupState', () => {
+  return {
+    autoUpdatePreference: readConfig().autoUpdatePreference ?? null,
+    updateState: currentUpdateState,
+    postUpdateRelease: getPostUpdateReleaseToShow(),
+    currentVersion: app.getVersion(),
+    isUpdaterSupported,
+    githubStarPrompt: getGithubStarPromptState(),
+  }
+})
+
+ipcMain.handle('engagement:dismissGithubStarPrompt', () => {
+  clearGithubStarPromptTimer()
+  const sessionOpenMs = appOpenStartedAt ? Math.max(0, Date.now() - appOpenStartedAt) : 0
+  updateConfig((current) => ({
+    ...current,
+    githubStarPrompt: {
+      accumulatedOpenMs:
+        (current.githubStarPrompt?.accumulatedOpenMs ?? 0) + sessionOpenMs,
+      dismissed: true,
+    },
+  }))
+  appOpenStartedAt = Date.now()
+})
+
+ipcMain.handle('engagement:openGithubRepo', async () => {
+  await shell.openExternal(GITHUB_REPO_URL)
+})
+
+ipcMain.handle('updates:setAutoUpdatePreference', async (_event, enabled: boolean) => {
+  updateConfig((current) => ({
+    ...current,
+    autoUpdatePreference: enabled ? 'enabled' : 'disabled',
+  }))
+
+  hasStartedUpdateCheck = false
+  await startUpdateCheckIfConfigured()
+})
+
+ipcMain.handle('updates:downloadUpdate', async () => {
+  if (!isUpdaterSupported) return
+  setUpdateState({
+    status: 'downloading',
+    progressPercent: 0,
+    release: currentUpdateState.release,
+  })
+  await autoUpdater.downloadUpdate()
+})
+
+ipcMain.handle('updates:installUpdate', () => {
+  if (!isUpdaterSupported) return
+  autoUpdater.quitAndInstall()
+})
+
+ipcMain.handle('updates:markReleaseNotesShown', (_event, version: string) => {
+  updateConfig((current) => ({
+    ...current,
+    lastSeenReleaseNotesVersion: version,
+    pendingPostUpdateRelease:
+      current.pendingPostUpdateRelease?.version === version ? undefined : current.pendingPostUpdateRelease,
+  }))
 })
 
 ipcMain.handle(
@@ -184,11 +473,14 @@ ipcMain.handle(
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
+  appOpenStartedAt = Date.now()
+
   if (process.platform === 'darwin') {
     const iconPath = resolveIconPath()
     if (iconPath) app.dock?.setIcon(nativeImage.createFromPath(iconPath))
   }
 
+  configureAutoUpdater()
   createWindow()
 
   app.on('activate', () => {
@@ -201,6 +493,9 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', async () => {
+  clearGithubStarPromptTimer()
+  persistAppOpenTime()
+
   if (lyriaSession) {
     await lyriaSession.stop()
     lyriaSession = null

@@ -10,6 +10,9 @@ import { Timeline } from '@/components/Timeline/Timeline'
 import { Transport } from '@/components/Transport/Transport'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { TutorialOverlay, type TutorialStep } from '@/components/Tutorial/TutorialOverlay'
+import { UpdateOverlay } from '@/components/Updates/UpdateOverlay'
+import { GithubStarOverlay } from '@/components/Engagement/GithubStarOverlay'
+import type { AutoUpdatePreference, UpdateReleaseInfo, UpdateState } from '@/types/lyria'
 
 const TUTORIAL_STORAGE_KEY = 'lyria-studio:tutorial-complete'
 
@@ -110,8 +113,42 @@ export default function App() {
   const { startLive, stopLive, captureInstrumentals, captureVocals } = useLyriaSession()
   const [isTutorialOpen, setIsTutorialOpen] = useState(false)
   const [currentTutorialStep, setCurrentTutorialStep] = useState(0)
+  const [autoUpdatePreference, setAutoUpdatePreference] = useState<AutoUpdatePreference | null>(null)
+  const [updateState, setUpdateState] = useState<UpdateState>({ status: 'idle' })
+  const [postUpdateRelease, setPostUpdateRelease] = useState<UpdateReleaseInfo | null>(null)
+  const [isUpdaterSupported, setIsUpdaterSupported] = useState(false)
+  const [isGithubStarPromptOpen, setIsGithubStarPromptOpen] = useState(false)
 
   useKeyboardShortcuts(startLive, stopLive)
+
+  useEffect(() => {
+    let disposed = false
+
+    window.updates.getStartupState().then((startup) => {
+      if (disposed) return
+      setAutoUpdatePreference(startup.autoUpdatePreference)
+      setUpdateState(startup.updateState)
+      setPostUpdateRelease(startup.postUpdateRelease)
+      setIsUpdaterSupported(startup.isUpdaterSupported)
+      setIsGithubStarPromptOpen(startup.githubStarPrompt.shouldShow)
+    })
+
+    const unsubscribe = window.updates.onEvent((nextState) => {
+      if (disposed) return
+      setUpdateState(nextState)
+    })
+
+    const unsubscribeGithubStarPrompt = window.engagement.onGithubStarPrompt(() => {
+      if (disposed) return
+      setIsGithubStarPromptOpen(true)
+    })
+
+    return () => {
+      disposed = true
+      unsubscribe()
+      unsubscribeGithubStarPrompt()
+    }
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -136,6 +173,45 @@ export default function App() {
     window.localStorage.setItem(TUTORIAL_STORAGE_KEY, 'true')
     setIsTutorialOpen(false)
     setCurrentTutorialStep(0)
+  }
+
+  const handleChooseAutoUpdates = (enabled: boolean) => {
+    const nextPreference: AutoUpdatePreference = enabled ? 'enabled' : 'disabled'
+    setAutoUpdatePreference(nextPreference)
+
+    if (updateState.status === 'error') {
+      setUpdateState({ status: 'idle' })
+    }
+
+    void window.updates.setAutoUpdatePreference(enabled)
+  }
+
+  const handleDownloadUpdate = () => {
+    void window.updates.downloadUpdate()
+  }
+
+  const handleInstallUpdate = () => {
+    void window.updates.installUpdate()
+  }
+
+  const handleDismissReleaseNotes = (version: string) => {
+    setPostUpdateRelease(null)
+    void window.updates.markReleaseNotesShown(version)
+  }
+
+  const handleDismissUpdateError = () => {
+    setUpdateState({ status: 'idle' })
+  }
+
+  const handleDismissGithubStarPrompt = () => {
+    setIsGithubStarPromptOpen(false)
+    void window.engagement.dismissGithubStarPrompt()
+  }
+
+  const handleConfirmGithubStarPrompt = () => {
+    setIsGithubStarPromptOpen(false)
+    void window.engagement.openGithubRepo()
+    void window.engagement.dismissGithubStarPrompt()
   }
 
   return (
@@ -191,6 +267,22 @@ export default function App() {
           onPrevious={() => setCurrentTutorialStep((step) => Math.max(step - 1, 0))}
         />
       )}
+      <UpdateOverlay
+        autoUpdatePreference={autoUpdatePreference}
+        isUpdaterSupported={isUpdaterSupported}
+        updateState={updateState}
+        postUpdateRelease={postUpdateRelease}
+        onChooseAutoUpdates={handleChooseAutoUpdates}
+        onDownloadUpdate={handleDownloadUpdate}
+        onInstallUpdate={handleInstallUpdate}
+        onDismissReleaseNotes={handleDismissReleaseNotes}
+        onDismissError={handleDismissUpdateError}
+      />
+      <GithubStarOverlay
+        isOpen={isGithubStarPromptOpen}
+        onConfirm={handleConfirmGithubStarPrompt}
+        onDismiss={handleDismissGithubStarPrompt}
+      />
     </>
   )
 }
