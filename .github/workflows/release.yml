@@ -29,11 +29,7 @@ jobs:
       - name: Build macOS updater artifacts
         run: npx electron-builder --mac zip --x64 --arm64 --publish never
         env:
-          CSC_LINK: ${{ secrets.APPLE_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Upload macOS assets
         uses: softprops/action-gh-release@v2
