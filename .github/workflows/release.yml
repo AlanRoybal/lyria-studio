@@ -45,6 +45,7 @@ jobs:
             release/lyria-studio-mac-x64.zip.blockmap
             release/lyria-studio-mac-arm64.zip
             release/lyria-studio-mac-arm64.zip.blockmap
+          overwrite_files: true
           fail_on_unmatched_files: true
 
   windows:
@@ -74,6 +75,7 @@ jobs:
             release/latest.yml
             release/lyria-studio-win-x64.exe
             release/lyria-studio-win-x64.exe.blockmap
+          overwrite_files: true
           fail_on_unmatched_files: true
 
   linux:
@@ -95,7 +97,7 @@ jobs:
       - run: npm run build
 
       - name: Build Linux updater artifacts
-        run: npx electron-builder --linux AppImage deb rpm --x64 --publish never
+        run: npx electron-builder --linux AppImage deb --x64 --publish never
 
       - name: Upload Linux assets
         uses: softprops/action-gh-release@v2
@@ -104,7 +106,6 @@ jobs:
           files: |
             release/latest-linux.yml
             release/lyria-studio-linux-x86_64.AppImage
-            release/lyria-studio-linux-x86_64.AppImage.blockmap
             release/lyria-studio-linux-amd64.deb
-            release/lyria-studio-linux-x86_64.rpm
+          overwrite_files: true
           fail_on_unmatched_files: true
