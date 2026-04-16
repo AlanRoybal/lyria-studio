@@ -90,9 +90,9 @@ let currentCheckWasManual = false
 const GITHUB_REPO_URL = 'https://github.com/AlanRoybal/lyria-studio'
 const GITHUB_STAR_PROMPT_DELAY_MS = 5 * 60 * 1000
 const BUNDLED_RELEASE_NOTES: Record<string, PersistedReleaseInfo> = {
-  '0.1.4': {
-    version: '0.1.4',
-    releaseName: 'v0.1.4',
+  '0.1.5': {
+    version: '0.1.5',
+    releaseName: 'v0.1.5',
     publishedAt: '2026-04-16',
     releaseNotes: [
       'Improves automation editing and keeps pitch changes from altering clip length.',

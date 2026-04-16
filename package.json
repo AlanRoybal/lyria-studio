@@ -1,6 +1,6 @@
 {
   "name": "lyria-studio",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Music IDE powered by Google Lyria Realtime",
   "main": "dist-electron/main.js",
   "scripts": {
