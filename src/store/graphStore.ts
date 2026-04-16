@@ -21,6 +21,7 @@ import {
   registerGraphHistoryAdapter,
   useHistoryStore,
 } from '@/store/historyStore'
+import { playUiSound } from '@/audio/UiSounds'
 
 let nodeCounter = 0
 
@@ -230,6 +231,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     set((s) => {
       if (!get().isValidConnection(connection)) return s
       useHistoryStore.getState().record('graph:connect')
+      playUiSound('connect')
       return {
         edges: addEdge(
           { ...connection, data: { weight: 1.0 }, type: 'weightedEdge' },

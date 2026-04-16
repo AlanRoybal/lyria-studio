@@ -10,6 +10,7 @@ declare global {
     store: {
       getApiKey(): Promise<string>
       setApiKey(key: string): Promise<void>
+      getFileDataUrl(filePath: string): string | null
       saveFile(
         suggestedName: string,
         data: Uint8Array,

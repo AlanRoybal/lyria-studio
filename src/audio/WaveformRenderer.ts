@@ -6,7 +6,13 @@ export function drawWaveform(
   canvas: HTMLCanvasElement,
   samples: Float32Array | number[],
   color: string,
-  options: { bg?: string; filled?: boolean; cropStartFraction?: number; cropEndFraction?: number } = {}
+  options: {
+    bg?: string
+    filled?: boolean
+    cropStartFraction?: number
+    cropEndFraction?: number
+    reverse?: boolean
+  } = {}
 ): void {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
@@ -40,7 +46,8 @@ export function drawWaveform(
     // Filled amplitude bars (better for static waveforms)
     ctx.fillStyle = color + '99'
     for (let x = 0; x < width; x++) {
-      const idx = startIdx + Math.floor(x * step)
+      const sampleX = options.reverse ? width - x - 1 : x
+      const idx = startIdx + Math.floor(sampleX * step)
       const raw = samples[Math.min(idx, samples.length - 1)]
       const amp = Math.abs(typeof raw === 'number' ? raw : raw)
       const barH = Math.max(2, amp * height)
@@ -49,7 +56,8 @@ export function drawWaveform(
   } else {
     // Line waveform (better for live display)
     for (let x = 0; x < width; x++) {
-      const idx = startIdx + Math.floor(x * step)
+      const sampleX = options.reverse ? width - x - 1 : x
+      const idx = startIdx + Math.floor(sampleX * step)
       const raw = samples[Math.min(idx, samples.length - 1)]
       const val = typeof raw === 'number' ? raw : raw
       const y = mid - val * mid

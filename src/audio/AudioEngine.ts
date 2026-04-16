@@ -1,5 +1,6 @@
 import type { Track } from '@/types/timeline'
 import { sampleEnvelope } from './Automation'
+import { getClipPlaybackBuffer } from './ClipPlayback'
 
 export class AudioEngine {
   private ctx: AudioContext | null = null
@@ -38,12 +39,13 @@ export class AudioEngine {
       if (hasSolo && !track.soloed) continue
 
       for (const clip of track.clips) {
-        if (!clip.audioBuffer) continue
+        const playbackBuffer = getClipPlaybackBuffer(clip, ctx)
+        if (!playbackBuffer) continue
         // Skip clips that end before the playhead
         if (clip.startSec + clip.durationSec <= fromSec) continue
 
         const source = ctx.createBufferSource()
-        source.buffer = clip.audioBuffer
+        source.buffer = playbackBuffer
         const speed = clip.speed ?? 1
         source.playbackRate.value = speed
 

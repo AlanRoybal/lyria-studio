@@ -21,6 +21,7 @@ export function TrackLane({ track, totalWidthPx, trackIndex, allTrackIds }: Trac
   const setTrackAutomation = useTimelineStore((s) => s.setTrackAutomation)
   const activeTrackId = useTimelineStore((s) => s.activeTrackId)
   const setActiveTrack = useTimelineStore((s) => s.setActiveTrack)
+  const setSelectedClip = useTimelineStore((s) => s.setSelectedClip)
   const setPlayhead = useTimelineStore((s) => s.setPlayhead)
   const isCapturing = useSessionStore((s) => s.isCapturing)
   const captureStartSec = useSessionStore((s) => s.captureStartSec)
@@ -30,12 +31,13 @@ export function TrackLane({ track, totalWidthPx, trackIndex, allTrackIds }: Trac
       setActiveTrack(track.id)
       // Only seek if clicking the lane background, not a clip
       if ((e.target as HTMLElement).closest('.group')) return
+      setSelectedClip(null)
       const rect = e.currentTarget.getBoundingClientRect()
       const x = e.clientX - rect.left
       const sec = scrollOffsetSec + x / zoomLevel
       setPlayhead(sec)
     },
-    [track.id, scrollOffsetSec, zoomLevel, setActiveTrack, setPlayhead]
+    [track.id, scrollOffsetSec, zoomLevel, setActiveTrack, setSelectedClip, setPlayhead]
   )
 
   return (

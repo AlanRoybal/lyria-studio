@@ -66,7 +66,7 @@ const TUTORIAL_STEPS: TutorialStep[] = [
     targetId: 'transport-playback',
     title: 'Use Playback And Edit Controls',
     body:
-      'These controls handle transport and arrangement tasks: play, stop, skip to the start, split a clip at the playhead, and toggle automation editing.',
+      'These controls handle transport and arrangement tasks: play, stop, skip to the start, split a clip at the playhead, reverse a selected clip, and toggle automation editing.',
     placement: 'top',
   },
   {
@@ -81,6 +81,20 @@ const TUTORIAL_STEPS: TutorialStep[] = [
     title: 'Arrange Clips In The Timeline',
     body:
       'Generated clips appear here. Drag the playhead to scrub, use track lanes to arrange clips, add tracks on the left, and zoom with Cmd/Ctrl plus the mouse wheel.',
+    placement: 'top',
+  },
+  {
+    targetId: 'timeline',
+    title: 'Automate Track Volume',
+    body:
+      'Turn on AUTO, then click in the empty part of a track lane to add volume points for the whole track. Track automation affects every clip on that track over timeline time.',
+    placement: 'top',
+  },
+  {
+    targetId: 'timeline',
+    title: 'Automate Clip Volume And Pitch',
+    body:
+      'With AUTO on, click a clip to edit its own envelope. Use the Vol toggle for clip-specific loudness changes, or Pitch to bend that clip up or down without changing the rest of the track.',
     placement: 'top',
   },
   {

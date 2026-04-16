@@ -1,5 +1,6 @@
 import type { Track } from '@/types/timeline'
 import { sampleEnvelope } from './Automation'
+import { getClipPlaybackBuffer } from './ClipPlayback'
 
 const SAMPLE_RATE = 48000
 
@@ -30,10 +31,11 @@ export async function renderMixdown(tracks: Track[]): Promise<AudioBuffer> {
     if (hasSolo && !track.soloed) continue
 
     for (const clip of track.clips) {
-      if (!clip.audioBuffer) continue
+      const playbackBuffer = getClipPlaybackBuffer(clip, ctx)
+      if (!playbackBuffer) continue
 
       const source = ctx.createBufferSource()
-      source.buffer = clip.audioBuffer
+      source.buffer = playbackBuffer
       const speed = clip.speed ?? 1
       source.playbackRate.value = speed
 

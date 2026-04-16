@@ -7,6 +7,7 @@ import {
   Scissors,
   Circle,
   Activity,
+  Shuffle,
 } from 'lucide-react'
 import { useTimelineStore } from '@/store/timelineStore'
 import { useSessionStore } from '@/store/sessionStore'
@@ -43,14 +44,17 @@ export function Transport({
     tracks,
     bpm,
     activeTrackId,
+    selectedClipId,
     automationMode,
     setIsPlaying,
     setPlayhead,
     setBpm,
     splitClipAtPlayhead,
+    toggleClipReverse,
     setAutomationMode,
   } = useTimelineStore()
 
+  const selectedClip = tracks.flatMap((track) => track.clips).find((clip) => clip.id === selectedClipId)
   const canSplit = (() => {
     const track = tracks.find((t) => t.id === activeTrackId)
     if (!track) return false
@@ -152,6 +156,17 @@ export function Transport({
           </button>
         </Tooltip>
 
+        <Tooltip text={selectedClip ? 'Reverse selected clip' : 'Select a clip to reverse it'}>
+          <button
+            onClick={() => selectedClip && toggleClipReverse(selectedClip.id)}
+            disabled={!selectedClip}
+            aria-label="Reverse selected clip"
+            className="flex h-8 w-8 items-center justify-center rounded text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-zinc-400"
+          >
+            <Shuffle size={14} />
+          </button>
+        </Tooltip>
+
         <Tooltip text={automationMode ? 'Exit automation mode' : 'Edit volume and clip pitch automation (click to add points, right-click to remove)'}>
           <button
             onClick={() => setAutomationMode(!automationMode)}
@@ -165,7 +180,9 @@ export function Transport({
             AUTO
           </button>
         </Tooltip>
+      </div>
 
+      <div className="flex items-center gap-1">
         <Tooltip text={isRecording ? 'Stop live session (R)' : 'Start live music stream (R)'}>
           <button
             onClick={handleLive}

@@ -1,11 +1,17 @@
 import { create } from 'zustand'
 import { v4 as uuid } from 'uuid'
 import { Track, Clip, TRACK_COLORS, AutomationPoint } from '@/types/timeline'
+import { sampleEnvelope, sortPoints } from '@/audio/Automation'
+import {
+  mirrorClipCropStartSec,
+  reverseAutomationPoints,
+} from '@/audio/ClipPlayback'
 import { audioEngine } from '@/audio/AudioEngine'
 import {
   registerTimelineHistoryAdapter,
   useHistoryStore,
 } from '@/store/historyStore'
+import { playUiSound } from '@/audio/UiSounds'
 
 interface TimelineState {
   tracks: Track[]
@@ -13,6 +19,7 @@ interface TimelineState {
   isPlaying: boolean
   isRecording: boolean
   activeTrackId: string | null
+  selectedClipId: string | null
   zoomLevel: number      // pixels per second
   scrollOffsetSec: number
   bpm: number
@@ -28,10 +35,12 @@ interface TimelineState {
   moveClip(clipId: string, newTrackId: string, newStartSec: number): void
   removeClip(clipId: string): void
   splitClipAtPlayhead(): void
+  toggleClipReverse(clipId: string): void
   setPlayhead(sec: number): void
   setIsPlaying(v: boolean): void
   setIsRecording(v: boolean): void
   setActiveTrack(id: string): void
+  setSelectedClip(id: string | null): void
   setZoom(level: number): void
   setScrollOffset(sec: number): void
   setBpm(bpm: number): void
@@ -42,6 +51,62 @@ interface TimelineState {
 }
 
 let pendingPlaybackRefresh = false
+
+function dedupeAutomationPoints(points: AutomationPoint[]): AutomationPoint[] {
+  const sorted = sortPoints(points)
+  return sorted.filter((point, index) => {
+    const previous = sorted[index - 1]
+    return !previous || previous.timeSec !== point.timeSec
+  })
+}
+
+function splitClipAutomation(
+  points: AutomationPoint[] | undefined,
+  splitTimeSec: number
+): { left?: AutomationPoint[]; right?: AutomationPoint[] } {
+  if (!points?.length) return {}
+
+  const splitValue = sampleEnvelope(points, splitTimeSec)
+  const left = dedupeAutomationPoints([
+    ...points
+      .filter((point) => point.timeSec < splitTimeSec)
+      .map((point) => ({ ...point })),
+    { timeSec: splitTimeSec, value: splitValue },
+  ])
+  const right = dedupeAutomationPoints([
+    { timeSec: 0, value: splitValue },
+    ...points
+      .filter((point) => point.timeSec > splitTimeSec)
+      .map((point) => ({
+        ...point,
+        timeSec: point.timeSec - splitTimeSec,
+      })),
+  ])
+
+  return {
+    left: left.length > 0 ? left : undefined,
+    right: right.length > 0 ? right : undefined,
+  }
+}
+
+function trimClipAutomation(
+  points: AutomationPoint[] | undefined,
+  durationSec: number
+): AutomationPoint[] | undefined {
+  if (!points?.length) return undefined
+
+  const keptPoints = points
+    .filter((point) => point.timeSec < durationSec)
+    .map((point) => ({ ...point }))
+  const hadClippedPoints = points.some((point) => point.timeSec >= durationSec)
+
+  if (!hadClippedPoints) return dedupeAutomationPoints(keptPoints)
+
+  return dedupeAutomationPoints([
+    ...keptPoints,
+    { timeSec: durationSec, value: sampleEnvelope(points, durationSec) },
+  ])
+}
 
 function schedulePlaybackRefresh() {
   if (pendingPlaybackRefresh) return
@@ -78,6 +143,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
   isPlaying: false,
   isRecording: false,
   activeTrackId: 'track-1',
+  selectedClipId: null,
   zoomLevel: 100,
   scrollOffsetSec: 0,
   bpm: 120,
@@ -111,6 +177,10 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       activeTrackId: s.activeTrackId === id
         ? (s.tracks.find((t) => t.id !== id)?.id ?? null)
         : s.activeTrackId,
+      selectedClipId:
+        s.tracks.some((t) => t.id === id && t.clips.some((c) => c.id === s.selectedClipId))
+          ? null
+          : s.selectedClipId,
     }))
     schedulePlaybackRefresh()
   },
@@ -125,12 +195,13 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
 
   addClip(trackId, clipData) {
     const id = uuid()
-    const clip: Clip = { id, trackId, speed: 1, ...clipData }
+    const clip: Clip = { id, trackId, speed: 1, isReversed: false, ...clipData }
     useHistoryStore.getState().record('timeline:add-clip')
     set((s) => ({
       tracks: s.tracks.map((t) =>
         t.id === trackId ? { ...t, clips: [...t.clips, clip] } : t
       ),
+      selectedClipId: id,
       // Extend timeline if clip goes past current duration
       durationSec: Math.max(
         s.durationSec,
@@ -153,6 +224,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       trackId: newTrackId,
       startSec: Math.max(0, newStartSec),
       speed: sourceClip.speed ?? 1,
+      isReversed: sourceClip.isReversed ?? false,
       volumeAutomation: sourceClip.volumeAutomation?.map((point) => ({ ...point })),
       pitchAutomation: sourceClip.pitchAutomation?.map((point) => ({ ...point })),
     }
@@ -164,6 +236,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
           ? { ...track, clips: [...track.clips, duplicatedClip] }
           : track
       ),
+      selectedClipId: id,
       durationSec: Math.max(
         s.durationSec,
         duplicatedClip.startSec + duplicatedClip.durationSec + 10
@@ -183,6 +256,16 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
         clips: t.clips.map((c) => {
           if (c.id !== clipId) return c
           const nextClip = { ...c, ...patch }
+          if (nextClip.durationSec < c.durationSec) {
+            nextClip.volumeAutomation = trimClipAutomation(
+              patch.volumeAutomation ?? c.volumeAutomation,
+              nextClip.durationSec
+            )
+            nextClip.pitchAutomation = trimClipAutomation(
+              patch.pitchAutomation ?? c.pitchAutomation,
+              nextClip.durationSec
+            )
+          }
           clipEnd = nextClip.startSec + nextClip.durationSec
           return nextClip
         }),
@@ -227,6 +310,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
         ...t,
         clips: t.clips.filter((c) => c.id !== clipId),
       })),
+      selectedClipId: s.selectedClipId === clipId ? null : s.selectedClipId,
     }))
     schedulePlaybackRefresh()
   },
@@ -241,12 +325,16 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
     )
     if (!clip) return
     const offset = playheadSec - clip.startSec
+    const splitVolumeAutomation = splitClipAutomation(clip.volumeAutomation, offset)
+    const splitPitchAutomation = splitClipAutomation(clip.pitchAutomation, offset)
     const rightClip: Clip = {
       ...clip,
       id: uuid(),
       startSec: playheadSec,
       cropStartSec: clip.cropStartSec + offset * (clip.speed ?? 1),
       durationSec: clip.durationSec - offset,
+      volumeAutomation: splitVolumeAutomation.right,
+      pitchAutomation: splitPitchAutomation.right,
     }
     useHistoryStore.getState().record('timeline:split-clip')
     set((s) => ({
@@ -255,11 +343,40 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
         return {
           ...t,
           clips: t.clips.flatMap((c) =>
-            c.id === clip.id ? [{ ...c, durationSec: offset }, rightClip] : [c]
+            c.id === clip.id
+              ? [{
+                  ...c,
+                  durationSec: offset,
+                  volumeAutomation: splitVolumeAutomation.left,
+                  pitchAutomation: splitPitchAutomation.left,
+                }, rightClip]
+              : [c]
           ),
         }
       }),
     }))
+    playUiSound('split')
+    schedulePlaybackRefresh()
+  },
+
+  toggleClipReverse(clipId) {
+    useHistoryStore.getState().record(`timeline:reverse-clip:${clipId}`)
+    set((s) => ({
+      tracks: s.tracks.map((track) => ({
+        ...track,
+        clips: track.clips.map((clip) => {
+          if (clip.id !== clipId) return clip
+          return {
+            ...clip,
+            isReversed: !(clip.isReversed ?? false),
+            cropStartSec: mirrorClipCropStartSec(clip),
+            volumeAutomation: reverseAutomationPoints(clip.volumeAutomation, clip.durationSec),
+            pitchAutomation: reverseAutomationPoints(clip.pitchAutomation, clip.durationSec),
+          }
+        }),
+      })),
+    }))
+    playUiSound('reverse')
     schedulePlaybackRefresh()
   },
 
@@ -267,6 +384,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
   setIsPlaying: (v) => set({ isPlaying: v }),
   setIsRecording: (v) => set({ isRecording: v }),
   setActiveTrack: (id) => set({ activeTrackId: id }),
+  setSelectedClip: (id) => set({ selectedClipId: id }),
   setZoom: (level) => set({ zoomLevel: Math.max(20, Math.min(500, level)) }),
   setScrollOffset: (sec) => set({ scrollOffsetSec: Math.max(0, sec) }),
   setBpm: (bpm) => {
@@ -318,6 +436,10 @@ registerTimelineHistoryAdapter({
     return { tracks, activeTrackId, durationSec, bpm }
   },
   applySnapshot: (snapshot) => {
-    useTimelineStore.setState(snapshot)
+    useTimelineStore.setState((state) => ({
+      ...state,
+      ...snapshot,
+      selectedClipId: null,
+    }))
   },
 })

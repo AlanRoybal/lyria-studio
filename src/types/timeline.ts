@@ -14,6 +14,7 @@ export interface Clip {
   label: string
   color: string
   speed?: number
+  isReversed?: boolean
   volumeAutomation?: AutomationPoint[]
   pitchAutomation?: AutomationPoint[]
 }

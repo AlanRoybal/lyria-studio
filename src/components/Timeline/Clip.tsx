@@ -1,9 +1,10 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
-import { Gauge } from 'lucide-react'
+import { Gauge, Shuffle } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import type { Clip as ClipType } from '@/types/timeline'
 import { useTimelineStore } from '@/store/timelineStore'
 import { drawWaveform } from '@/audio/WaveformRenderer'
+import { getClipSourceDurationSec, getClipTotalBufferSec } from '@/audio/ClipPlayback'
 import { EnvelopeEditor } from './EnvelopeEditor'
 
 const TRACK_HEIGHT_PX = 80 // must match TrackLane h-20
@@ -25,10 +26,13 @@ export function Clip({ clip, zoomLevel, scrollOffsetSec, trackIndex, allTrackIds
     moveClip,
     removeClip,
     updateClip,
+    setActiveTrack,
+    setSelectedClip,
     setClipAutomation,
     setClipPitchAutomation,
   } = useTimelineStore()
   const automationMode = useTimelineStore((s) => s.automationMode)
+  const selectedClipId = useTimelineStore((s) => s.selectedClipId)
   const [automationLane, setAutomationLane] = useState<'volume' | 'pitch'>('volume')
   const [isSpeedOpen, setIsSpeedOpen] = useState(false)
   const [speedPanelPosition, setSpeedPanelPosition] = useState<{ top: number; left: number } | null>(null)
@@ -38,10 +42,11 @@ export function Clip({ clip, zoomLevel, scrollOffsetSec, trackIndex, allTrackIds
   const widthPx = Math.max(8, clip.durationSec * zoomLevel)
 
   // Total audio buffer duration — needed to compute crop fractions for waveform
-  const sourceDurationSec = clip.durationSec * playbackSpeed
-  const totalBufferSec = clip.audioBuffer?.duration ?? (clip.cropStartSec + sourceDurationSec)
+  const sourceDurationSec = getClipSourceDurationSec(clip)
+  const totalBufferSec = getClipTotalBufferSec(clip)
   const cropStartFraction = totalBufferSec > 0 ? clip.cropStartSec / totalBufferSec : 0
   const cropEndFraction = totalBufferSec > 0 ? (clip.cropStartSec + sourceDurationSec) / totalBufferSec : 1
+  const isSelected = selectedClipId === clip.id
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -51,8 +56,9 @@ export function Clip({ clip, zoomLevel, scrollOffsetSec, trackIndex, allTrackIds
       filled: true,
       cropStartFraction,
       cropEndFraction,
+      reverse: clip.isReversed,
     })
-  }, [clip.waveformCache, clip.color, widthPx, cropStartFraction, cropEndFraction])
+  }, [clip.waveformCache, clip.color, widthPx, cropStartFraction, cropEndFraction, clip.isReversed])
 
   useEffect(() => {
     if (!isSpeedOpen) return
@@ -89,6 +95,8 @@ export function Clip({ clip, zoomLevel, scrollOffsetSec, trackIndex, allTrackIds
     (e: React.MouseEvent) => {
       if ((e.target as HTMLElement).dataset.resize) return // let resize handle it
       e.stopPropagation()
+      setActiveTrack(clip.trackId)
+      setSelectedClip(clip.id)
 
       const shouldDuplicate = e.altKey
       const startX = e.clientX
@@ -128,7 +136,7 @@ export function Clip({ clip, zoomLevel, scrollOffsetSec, trackIndex, allTrackIds
       document.addEventListener('mousemove', onMove)
       document.addEventListener('mouseup', onUp)
     },
-    [clip.id, clip.startSec, zoomLevel, scrollOffsetSec, duplicateClip, moveClip, trackIndex, allTrackIds]
+    [clip.id, clip.startSec, clip.trackId, zoomLevel, scrollOffsetSec, duplicateClip, moveClip, trackIndex, allTrackIds, setActiveTrack, setSelectedClip]
   )
 
   // ── Left-edge crop resize ──────────────────────────────────────────────────
@@ -205,9 +213,10 @@ export function Clip({ clip, zoomLevel, scrollOffsetSec, trackIndex, allTrackIds
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault()
+      setSelectedClip(clip.id)
       removeClip(clip.id)
     },
-    [clip.id, removeClip]
+    [clip.id, removeClip, setSelectedClip]
   )
 
   return (
@@ -219,7 +228,8 @@ export function Clip({ clip, zoomLevel, scrollOffsetSec, trackIndex, allTrackIds
         width: widthPx,
         height: 'calc(100% - 8px)',
         backgroundColor: clip.color + '33',
-        border: `1px solid ${clip.color}66`,
+        border: `1px solid ${isSelected ? clip.color : `${clip.color}66`}`,
+        boxShadow: isSelected ? `0 0 0 1px ${clip.color}55 inset, 0 0 0 1px ${clip.color}55` : undefined,
       }}
       onMouseDown={handleMouseDown}
       onContextMenu={handleContextMenu}
@@ -233,10 +243,11 @@ export function Clip({ clip, zoomLevel, scrollOffsetSec, trackIndex, allTrackIds
 
       {/* Label */}
       <div
-        className="pointer-events-none absolute left-1.5 top-0.5 truncate text-[10px] font-medium"
+        className="pointer-events-none absolute left-1.5 top-0.5 flex items-center gap-1 text-[10px] font-medium"
         style={{ color: clip.color, maxWidth: widthPx - 46 }}
       >
-        {clip.label}
+        <span className="truncate">{clip.label}</span>
+        {clip.isReversed && <Shuffle size={10} className="shrink-0 text-zinc-200" />}
       </div>
 
       <button

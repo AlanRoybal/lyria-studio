@@ -1,8 +1,32 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import fs from 'fs'
+import path from 'path'
+
+function getMimeType(filePath: string): string {
+  switch (path.extname(filePath).toLowerCase()) {
+    case '.mp3':
+      return 'audio/mpeg'
+    case '.wav':
+      return 'audio/wav'
+    case '.ogg':
+      return 'audio/ogg'
+    default:
+      return 'application/octet-stream'
+  }
+}
 
 contextBridge.exposeInMainWorld('store', {
   getApiKey: (): Promise<string> => ipcRenderer.invoke('store:getApiKey'),
   setApiKey: (key: string): Promise<void> => ipcRenderer.invoke('store:setApiKey', key),
+  getFileDataUrl: (filePath: string): string | null => {
+    try {
+      const bytes = fs.readFileSync(filePath)
+      const mimeType = getMimeType(filePath)
+      return `data:${mimeType};base64,${bytes.toString('base64')}`
+    } catch {
+      return null
+    }
+  },
   saveFile: (
     suggestedName: string,
     data: Uint8Array,
