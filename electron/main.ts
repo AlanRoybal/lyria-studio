@@ -33,6 +33,7 @@ interface UpdateState {
   message?: string
   progressPercent?: number
   release?: PersistedReleaseInfo
+  wasManualCheck?: boolean
 }
 
 function resolveIconPath(): string | null {
@@ -85,20 +86,21 @@ const isDev = process.env.NODE_ENV === 'development' || !!process.env.VITE_DEV_S
 const isUpdaterSupported = app.isPackaged && !isDev
 let currentUpdateState: UpdateState = { status: isUpdaterSupported ? 'idle' : 'unsupported' }
 let hasStartedUpdateCheck = false
+let currentCheckWasManual = false
 const GITHUB_REPO_URL = 'https://github.com/AlanRoybal/lyria-studio'
 const GITHUB_STAR_PROMPT_DELAY_MS = 5 * 60 * 1000
 const BUNDLED_RELEASE_NOTES: Record<string, PersistedReleaseInfo> = {
-  '0.1.1': {
-    version: '0.1.1',
-    releaseName: 'v0.1.1',
-    publishedAt: '2026-04-15',
+  '0.1.3': {
+    version: '0.1.3',
+    releaseName: 'v0.1.3',
+    publishedAt: '2026-04-16',
     releaseNotes: [
-      'Initial public beta release of Lyria Studio.',
+      'Improves update detection and update controls in packaged builds.',
       '',
-      '- Node-based music graph with Prompt, Instrument, Vocals, and Output nodes.',
-      '- Live Lyria Realtime session control with direct timeline capture for instrumentals and vocals.',
-      '- Timeline editing with clip splitting, reversing, multi-track arrangement, and automation for volume and pitch.',
-      '- Local export flow plus built-in onboarding, update prompts, and GitHub release integration.',
+      '- The app now checks for updates on startup even when automatic downloading is turned off.',
+      '- Choosing "Ask Me Each Time" now still surfaces available releases instead of silently skipping them.',
+      '- Added a manual Updates button in the toolbar for on-demand update checks.',
+      '- Manual update checks now show a clear up-to-date result when no newer release is available.',
     ].join('\n'),
   },
 }
@@ -215,22 +217,28 @@ function configureAutoUpdater(): void {
   autoUpdater.disableWebInstaller = true
   autoUpdater.forceDevUpdateConfig = false
   autoUpdater.on('checking-for-update', () => {
-    setUpdateState({ status: 'checking' })
+    setUpdateState({ status: 'checking', wasManualCheck: currentCheckWasManual })
   })
   autoUpdater.on('update-available', (info) => {
     setUpdateState({
       status: autoUpdater.autoDownload ? 'downloading' : 'available',
       release: toPersistedReleaseInfo(info),
+      wasManualCheck: currentCheckWasManual,
     })
   })
   autoUpdater.on('update-not-available', () => {
-    setUpdateState({ status: 'none' })
+    setUpdateState({
+      status: 'none',
+      message: currentCheckWasManual ? `Lyria Studio ${app.getVersion()} is up to date.` : undefined,
+      wasManualCheck: currentCheckWasManual,
+    })
   })
   autoUpdater.on('download-progress', (progress: ProgressInfo) => {
     setUpdateState({
       status: 'downloading',
       progressPercent: progress.percent,
       release: currentUpdateState.release,
+      wasManualCheck: currentUpdateState.wasManualCheck,
     })
   })
   autoUpdater.on('update-downloaded', (info) => {
@@ -244,6 +252,7 @@ function configureAutoUpdater(): void {
     setUpdateState({
       status: 'downloaded',
       release,
+      wasManualCheck: currentUpdateState.wasManualCheck,
     })
   })
   autoUpdater.on('error', (error) => {
@@ -251,38 +260,36 @@ function configureAutoUpdater(): void {
       status: 'error',
       message: error == null ? 'Unknown update error' : String(error),
       release: currentUpdateState.release,
+      wasManualCheck: currentUpdateState.wasManualCheck,
     })
   })
 }
 
-async function checkForAppUpdates(): Promise<void> {
+async function checkForAppUpdates(manual: boolean): Promise<void> {
   if (!isUpdaterSupported) {
     setUpdateState({ status: 'unsupported' })
     return
   }
 
   const preference = readConfig().autoUpdatePreference
-  if (!preference) return
-
+  currentCheckWasManual = manual
   autoUpdater.autoDownload = preference === 'enabled'
   await autoUpdater.checkForUpdates()
 }
 
-async function startUpdateCheckIfConfigured(): Promise<void> {
+async function startUpdateCheck(manual: boolean): Promise<void> {
   if (hasStartedUpdateCheck) return
-
-  const preference = readConfig().autoUpdatePreference
-  if (!preference) return
 
   hasStartedUpdateCheck = true
 
   try {
-    await checkForAppUpdates()
+    await checkForAppUpdates(manual)
   } catch (error) {
     hasStartedUpdateCheck = false
     setUpdateState({
       status: 'error',
       message: error instanceof Error ? error.message : String(error),
+      wasManualCheck: manual,
     })
   }
 }
@@ -320,7 +327,7 @@ function createWindow() {
   })
 
   mainWindow.webContents.once('did-finish-load', () => {
-    void startUpdateCheckIfConfigured()
+    void startUpdateCheck(false)
     scheduleGithubStarPrompt()
   })
 }
@@ -380,7 +387,12 @@ ipcMain.handle('updates:setAutoUpdatePreference', async (_event, enabled: boolea
   }))
 
   hasStartedUpdateCheck = false
-  await startUpdateCheckIfConfigured()
+  await startUpdateCheck(true)
+})
+
+ipcMain.handle('updates:checkNow', async () => {
+  hasStartedUpdateCheck = false
+  await startUpdateCheck(true)
 })
 
 ipcMain.handle('updates:downloadUpdate', async () => {

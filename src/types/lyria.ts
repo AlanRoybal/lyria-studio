@@ -19,6 +19,7 @@ export interface UpdateState {
   message?: string
   progressPercent?: number
   release?: UpdateReleaseInfo
+  wasManualCheck?: boolean
 }
 
 export interface UpdateStartupState {
@@ -49,6 +50,7 @@ declare global {
     updates: {
       getStartupState(): Promise<UpdateStartupState>
       setAutoUpdatePreference(enabled: boolean): Promise<void>
+      checkNow(): Promise<void>
       downloadUpdate(): Promise<void>
       installUpdate(): Promise<void>
       markReleaseNotesShown(version: string): Promise<void>

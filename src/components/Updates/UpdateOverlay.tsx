@@ -85,6 +85,76 @@ export function UpdateOverlay({
         Continue
       </button>
     )
+  } else if (updateState.status === 'available' && updateState.release) {
+    const updateBehavior =
+      autoUpdatePreference === 'enabled'
+        ? 'Automatic downloading is enabled, but you can also start this update manually now.'
+        : autoUpdatePreference === 'disabled'
+        ? 'Automatic downloading is off. Install the latest release now, or skip it and be asked again later.'
+        : 'Choose how you want updates handled going forward, or install this release right now.'
+    title = `${updateState.release.releaseName ?? `v${updateState.release.version}`} Is Available`
+    body = (
+      <>
+        <p className="text-sm leading-6 text-zinc-300">{updateBehavior}</p>
+        <ReleaseNotes release={updateState.release} />
+      </>
+    )
+    actions = (
+      <>
+        {autoUpdatePreference === null ? (
+          <>
+            <button
+              type="button"
+              onClick={() => onChooseAutoUpdates(false)}
+              className="rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-white/25 hover:bg-white/5"
+            >
+              Ask Me Each Time
+            </button>
+            <button
+              type="button"
+              onClick={() => onChooseAutoUpdates(true)}
+              className="rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-white/25 hover:bg-white/5"
+            >
+              Enable Auto Updates
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onChooseAutoUpdates(false)}
+            className="rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-white/25 hover:bg-white/5"
+          >
+            Maybe Later
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onDownloadUpdate}
+          className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-zinc-200"
+        >
+          Update Now
+        </button>
+      </>
+    )
+  } else if (updateState.status === 'checking') {
+    title = 'Checking For Updates'
+    body = <p className="text-sm leading-6 text-zinc-300">Looking for a newer GitHub release.</p>
+  } else if (updateState.status === 'none' && updateState.wasManualCheck) {
+    title = 'You’re Up To Date'
+    body = (
+      <p className="text-sm leading-6 text-zinc-300">
+        {updateState.message ?? 'No newer release is available right now.'}
+      </p>
+    )
+    actions = (
+      <button
+        type="button"
+        onClick={onDismissError}
+        className="rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-white/25 hover:bg-white/5"
+      >
+        Close
+      </button>
+    )
   } else if (autoUpdatePreference === null) {
     title = 'Enable Auto Updates?'
     body = (
@@ -111,37 +181,6 @@ export function UpdateOverlay({
         </button>
       </>
     )
-  } else if (updateState.status === 'available' && updateState.release) {
-    title = `${updateState.release.releaseName ?? `v${updateState.release.version}`} Is Available`
-    body = (
-      <>
-        <p className="text-sm leading-6 text-zinc-300">
-          Auto updates are off. Install the latest release now and keep this choice for future launches.
-        </p>
-        <ReleaseNotes release={updateState.release} />
-      </>
-    )
-    actions = (
-      <>
-        <button
-          type="button"
-          onClick={() => onChooseAutoUpdates(false)}
-          className="rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-white/25 hover:bg-white/5"
-        >
-          Skip This Update
-        </button>
-        <button
-          type="button"
-          onClick={onDownloadUpdate}
-          className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-zinc-200"
-        >
-          Update Now
-        </button>
-      </>
-    )
-  } else if (updateState.status === 'checking') {
-    title = 'Checking For Updates'
-    body = <p className="text-sm leading-6 text-zinc-300">Looking for a newer GitHub release.</p>
   } else if (updateState.status === 'downloading') {
     const percent = Math.max(0, Math.min(100, Math.round(updateState.progressPercent ?? 0)))
     title = `Downloading ${updateState.release?.releaseName ?? 'Update'}`
@@ -183,7 +222,7 @@ export function UpdateOverlay({
         onClick={onDismissError}
         className="rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-white/25 hover:bg-white/5"
       >
-        Dismiss
+        Close
       </button>
     )
   } else {

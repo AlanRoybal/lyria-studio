@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld('updates', {
   getStartupState: () => ipcRenderer.invoke('updates:getStartupState'),
   setAutoUpdatePreference: (enabled: boolean) =>
     ipcRenderer.invoke('updates:setAutoUpdatePreference', enabled),
+  checkNow: () => ipcRenderer.invoke('updates:checkNow'),
   downloadUpdate: () => ipcRenderer.invoke('updates:downloadUpdate'),
   installUpdate: () => ipcRenderer.invoke('updates:installUpdate'),
   markReleaseNotesShown: (version: string) =>

@@ -193,6 +193,12 @@ export default function App() {
     void window.updates.downloadUpdate()
   }
 
+  const handleCheckForUpdates = () => {
+    if (updateState.status === 'checking' || updateState.status === 'downloading') return
+    setUpdateState({ status: 'checking', wasManualCheck: true })
+    void window.updates.checkNow()
+  }
+
   const handleInstallUpdate = () => {
     void window.updates.installUpdate()
   }
@@ -227,7 +233,11 @@ export default function App() {
           gridTemplateColumns: '1fr',
         }}
       >
-        <Toolbar onStartRecording={startLive} onStopRecording={stopLive} />
+        <Toolbar
+          onStartRecording={startLive}
+          onStopRecording={stopLive}
+          onCheckUpdates={handleCheckForUpdates}
+        />
         <MiniOverview />
         <div className="flex h-full min-h-0 overflow-hidden">
           <div className="h-full min-h-0 min-w-0 flex-1 overflow-hidden">

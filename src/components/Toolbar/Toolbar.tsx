@@ -7,6 +7,7 @@ import { Tooltip } from '@/components/ui/Tooltip'
 interface ToolbarProps {
   onStartRecording: () => void
   onStopRecording: () => void
+  onCheckUpdates: () => void
 }
 
 const STATUS_CONFIG = {
@@ -19,6 +20,7 @@ const STATUS_CONFIG = {
 export function Toolbar({
   onStartRecording: _onStart,
   onStopRecording: _onStop,
+  onCheckUpdates,
 }: ToolbarProps) {
   const connectionStatus = useSessionStore((s) => s.connectionStatus)
   const errorMessage = useSessionStore((s) => s.errorMessage)
@@ -161,6 +163,21 @@ export function Toolbar({
             {errorMessage}
           </span>
         )}
+      </div>
+      <div className="h-5 w-px bg-studio-border" />
+      <div
+        className="flex items-center"
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      >
+        <Tooltip text="Check for app updates" position="bottom">
+          <button
+            type="button"
+            onClick={onCheckUpdates}
+            className="rounded border border-zinc-700 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-300 transition hover:border-zinc-500 hover:bg-zinc-900 hover:text-white"
+          >
+            Updates
+          </button>
+        </Tooltip>
       </div>
       <div className="flex-1" />
     </div>
