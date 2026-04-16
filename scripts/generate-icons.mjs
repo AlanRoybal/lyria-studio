@@ -1,11 +1,20 @@
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import sharp from 'sharp'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = resolve(__dirname, '..')
-const svgPath = resolve(root, 'build/icon.svg')
+const svgCandidates = [
+  resolve(root, 'public/icon.svg'),
+  resolve(root, 'build/icon.svg'),
+]
+const svgPath = svgCandidates.find((candidate) => existsSync(candidate))
+
+if (!svgPath) {
+  throw new Error(`Missing icon source. Expected one of: ${svgCandidates.join(', ')}`)
+}
+
 const svg = readFileSync(svgPath)
 
 const targets = [
